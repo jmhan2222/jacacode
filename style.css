@@ -3,10 +3,10 @@
 
 :root {
   /* === 새 시맨틱 변수 === */
-  --color-primary:        #003479;
-  --color-primary-light:  #0051c8;
-  --color-accent:         #FF6B00;
-  --color-accent-soft:    #FF8C38;
+  --color-primary:        #7B1E3A;
+  --color-primary-light:  #A8324F;
+  --color-accent:         #C9911F;
+  --color-accent-soft:    #E0B04A;
   --color-bg:             #F5F5F7;
   --color-surface:        #FFFFFF;
   --color-surface-2:      #FBFBFD;
@@ -26,14 +26,14 @@
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
 
   /* === 레거시 변수 (기존 코드 호환) === */
-  --blue:       #003479;
-  --blue-light: #EEF2FF;
-  --blue-mid:   #0051c8;
-  --navy:       #003479;
-  --sky:        #EEF2FF;
+  --blue:       #7B1E3A;
+  --blue-light: #FBEFF2;
+  --blue-mid:   #A8324F;
+  --navy:       #7B1E3A;
+  --sky:        #FBEFF2;
   --green:      #34C759;
   --yellow:     #FF9500;
-  --orange:     #FF6B00;
+  --orange:     #C9911F;
   --red:        #FF3B30;
   --purple:     #8b5cf6;
   --gray-50:    #F5F5F7;
@@ -88,7 +88,9 @@ html, body {
 }
 .header-left { display: flex; align-items: center; gap: 14px; }
 .logo-mark {
-  font-size: 22px;
+  font-size: 15px;          /* 한자 2글자(日中) 수용 — 기존 ✈ 아이콘은 22px */
+  font-weight: 700;
+  letter-spacing: -.5px;
   background: rgba(255,255,255,.15);
   width: 38px; height: 38px;
   border-radius: var(--radius-sm);
@@ -1306,7 +1308,7 @@ html, body {
     padding: 10px 14px;
   }
   .header-left { gap: 10px; }
-  .logo-mark { width: 32px; height: 32px; font-size: 18px; }
+  .logo-mark { width: 32px; height: 32px; font-size: 13px; }
   .logo-text { font-size: 16px; }
   .logo-sub { font-size: 10px; }
   .header-right {
