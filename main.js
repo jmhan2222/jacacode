@@ -1289,19 +1289,25 @@ function splitSentences(text) {
     .filter(s => s.length > 5);
 }
 
-function renderClickableScript(text) {
-  return _renderKoEnText(text);
+function renderClickableScript(text, lang) {
+  return _renderKoEnText(text, lang || state.selectedLang);
 }
 
 // ===== HTML ESCAPING & SCRIPT TEXT RENDERING =====
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-function _renderKoEnText(text) {
-  const hv = s => escHtml(s).replace(/\[([^\]]+)\]/g, (match, inner) => {
+// 독음/병음 표시 여부 (사용자 토글, localStorage 유지)
+let _showReading = (localStorage.getItem('jaca_show_reading') ?? '1') === '1';
+function _withReading(html, lang) {
+  if (!_showReading || typeof annotateReading !== 'function') return html;
+  try { return annotateReading(html, lang); } catch { return html; }
+}
+function _renderKoEnText(text, lang) {
+  const hv = s => _withReading(escHtml(s).replace(/\[([^\]]+)\]/g, (match, inner) => {
     if (/^(General|수하물|필요|생략|군사)/.test(inner)) return match;
     return `<span class="script-var">[${inner}]</span>`;
-  });
+  }), lang);
   const lines = text.split('\n');
   let html = '';
   let tableRows = [];  // markdown pipe tables
@@ -1695,6 +1701,7 @@ function _renderDetailLangTabs(s) {
 }
 
 function _renderDetailContent(s, lang) {
+  _lastDetailScript = s;
   const langData = s.langs[lang];
   if (!langData) return;
 
@@ -1765,7 +1772,7 @@ function _setupSidebarSearch() {
 function renderScriptText(script, langCode, targetEl) {
   if (!targetEl) return;
   const text = script?.langs?.[langCode]?.text || '';
-  targetEl.innerHTML = _renderKoEnText(text);
+  targetEl.innerHTML = _renderKoEnText(text, langCode);
 }
 
 // ===== PREP =====
@@ -3998,6 +4005,7 @@ let _pdfParsedScripts = [];
 let _allScripts = [];  // 전체 방송문 (Firestore + 빌트인 + custom)
 let _selectedScriptId = null;
 let _detailLang = 'ja';
+let _lastDetailScript = null;
 
 // ===== PDF IMPORT =====
 function openPdfModal() {
@@ -6265,6 +6273,27 @@ document.addEventListener('DOMContentLoaded', () => {
   _setupSidebarSearch();
 
   // 상세 패널 언어 탭
+  // 독음/병음 표시 토글
+  const _rdBtn = $('btn-reading-toggle');
+  if (_rdBtn) {
+    const _syncRd = () => {
+      _rdBtn.classList.toggle('active', _showReading);
+      const lb = $('reading-toggle-label');
+      if (lb) lb.textContent = _showReading
+        ? (_detailLang === 'ca' ? '병음 ON' : '독음 ON')
+        : (_detailLang === 'ca' ? '병음 OFF' : '독음 OFF');
+    };
+    _syncRd();
+    _rdBtn.addEventListener('click', () => {
+      _showReading = !_showReading;
+      localStorage.setItem('jaca_show_reading', _showReading ? '1' : '0');
+      _syncRd();
+      const s = state.currentScript || _lastDetailScript;
+      if (s) _renderDetailContent(s, _detailLang);
+    });
+    window._syncReadingBtn = _syncRd;
+  }
+
   $('detail-lang-tabs').querySelectorAll('.detail-lang-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       if (!_selectedScriptId) return;
@@ -6273,6 +6302,7 @@ document.addEventListener('DOMContentLoaded', () => {
       _detailLang = tab.dataset.lang;
       $('detail-lang-tabs').querySelectorAll('.detail-lang-tab').forEach(t => t.classList.toggle('active', t.dataset.lang===_detailLang));
       _renderDetailContent(s, _detailLang);
+      if (window._syncReadingBtn) window._syncReadingBtn();
     });
   });
 

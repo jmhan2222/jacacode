@@ -36,9 +36,9 @@ console.log('[Login] login.js 로드됨');
         <div style="text-align:center;margin-bottom:24px;">
           <div style="font-size:36px;">✈️</div>
           <h1 style="font-size:22px;font-weight:800;
-            color:#FF6B00;margin:8px 0 4px;">JA·CA Code</h1>
+            color:#FF6B00;margin:8px 0 4px;">Voice Pro</h1>
           <p style="font-size:12px;color:rgba(255,255,255,0.5);">
-            기내방송 자가 훈련 플랫폼</p>
+            일본어 · 중국어 기내방송 훈련 플랫폼</p>
         </div>
         <div style="margin-bottom:14px;">
           <label style="font-size:13px;font-weight:600;

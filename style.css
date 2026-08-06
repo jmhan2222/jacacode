@@ -2752,3 +2752,58 @@ body.cvp-protected * {
 @media print {
   body.cvp-protected { display: none !important; }
 }
+
+/* ===== 독음(일본어) / 병음(중국어) 루비 표기 ===== */
+.script-text-rendered ruby { ruby-align: center; }
+/* 일본어: 한글 독음을 아래에 */
+ruby.rb-ja {
+  ruby-position: under;
+  -webkit-ruby-position: after;
+  margin: 0 1px;
+}
+ruby.rb-ja rt {
+  font-size: 0.62em;
+  color: var(--color-primary-light);
+  font-weight: 500;
+  letter-spacing: -.2px;
+  user-select: none;
+}
+/* 중국어: 병음을 위에 (교재 관례) */
+ruby.rb-ca {
+  ruby-position: over;
+  -webkit-ruby-position: before;
+  margin: 0 1px;
+}
+ruby.rb-ca rt {
+  font-size: 0.58em;
+  color: var(--color-primary-light);
+  font-weight: 500;
+  user-select: none;
+}
+/* 루비가 붙으면 줄 간격 확보 */
+.script-text-rendered p,
+.script-text-rendered .script-tagged-content { line-height: 2.6 !important; }
+
+/* 독음 토글 버튼 */
+.btn-reading-toggle {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 8px;
+  transition: all .15s;
+}
+.btn-reading-toggle.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+/* 교범에 독음/병음이 없는 토큰 — 교관 확인 필요 표시 */
+.rb-missing {
+  border-bottom: 1px dotted var(--color-warning);
+  padding-bottom: 1px;
+}

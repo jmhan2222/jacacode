@@ -8,13 +8,14 @@
   <link rel="apple-touch-icon" sizes="167x167" href="iconG-167.png">
   <link rel="apple-touch-icon" sizes="152x152" href="iconG-152.png">
   <link rel="apple-touch-icon" sizes="120x120" href="iconG-120.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="JA·CA Code">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237B1E3A'/%3E%3Ctext x='32' y='29' font-family='Arial,sans-serif' font-size='22' font-weight='bold' fill='%23fff' text-anchor='middle'%3EJA%3C/text%3E%3Ctext x='32' y='50' font-family='Arial,sans-serif' font-size='22' font-weight='bold' fill='%23C9911F' text-anchor='middle'%3ECA%3C/text%3E%3C/svg%3E">
   <meta name="theme-color" content="#7B1E3A">
   <link rel="icon" type="image/png" sizes="192x192" href="iconG-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="iconG-512.png">
-  <meta name="apple-mobile-web-app-title" content="CabinVoice">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link href='/style.css' rel='stylesheet'>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -164,6 +165,9 @@
             <button class="btn-icon sm detail-edit-btn hidden" id="detail-edit-btn">✏️ 편집</button>
           </div>
           <h2 class="detail-title" id="detail-title"></h2>
+          <button class="btn-reading-toggle active" id="btn-reading-toggle" title="독음/병음 표시 전환">
+            <span id="reading-toggle-label">독음 ON</span>
+          </button>
           <div class="detail-lang-tabs" id="detail-lang-tabs">
             <button class="detail-lang-tab active" data-lang="ja">🇯🇵 日本語</button>
             <button class="detail-lang-tab" data-lang="ca">🇨🇳 中文</button>
@@ -817,6 +821,8 @@
   <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth-compat.js"></script>
+  <script src="/reading-data.js"></script>
+  <script src="/reading.js"></script>
   <script defer type="text/javascript" src="/main.js"></script>
 <script src="/login.js"></script>
 </body>
