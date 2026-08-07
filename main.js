@@ -1297,6 +1297,26 @@ function renderClickableScript(text, lang) {
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+// 데이터에 포함된 기존 독음 줄 제거
+// (교범 레이아웃을 그대로 옮긴 흔적. 루비 주석이 같은 정보를 문절 단위로 더 정확히
+//  보여주므로 중복 표기를 막는다. 원본 데이터는 건드리지 않고 렌더 시점에만 숨김.)
+// 판정: 가나·한자가 하나도 없고 한글 3자 이상 + 바로 다음 줄에 가나가 있는 줄
+function _stripYomiLines(text, lang) {
+  if (lang !== 'ja' || !text) return text;
+  const lines = String(text).split('\n');
+  const hasKana = s => /[\u3040-\u30ff]/.test(s);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i], t = L.trim();
+    const koCount = (t.match(/[가-힣]/g) || []).length;
+    const isYomi = t && !hasKana(t) && !/[\u4e00-\u9fff]/.test(t) && koCount >= 3
+                   && !(t.startsWith('[') && t.endsWith(']')) && !t.includes('|')
+                   && hasKana(lines[i+1] || '');
+    if (!isYomi) out.push(L);
+  }
+  return out.join('\n');
+}
+
 // 독음/병음 표시 여부 (사용자 토글, localStorage 유지)
 let _showReading = (localStorage.getItem('jaca_show_reading') ?? '1') === '1';
 function _withReading(html, lang) {
@@ -1304,6 +1324,7 @@ function _withReading(html, lang) {
   try { return annotateReading(html, lang); } catch { return html; }
 }
 function _renderKoEnText(text, lang) {
+  text = _showReading ? _stripYomiLines(text, lang) : text;
   const hv = s => _withReading(escHtml(s).replace(/\[([^\]]+)\]/g, (match, inner) => {
     if (/^(General|수하물|필요|생략|군사)/.test(inner)) return match;
     return `<span class="script-var">[${inner}]</span>`;
@@ -2492,6 +2513,8 @@ async function _saveEditedGuide() {
 function _renderStudyGuide(guide) {
   const el = $('study-guide-result');
   const esc = s => escHtml(String(s || ''));
+  // 원어(일본어/중국어) 구간용 — 독음/병음 루비 부착
+  const escR = s => _withReading(escHtml(String(s || '')), state.selectedLang);
   const admin = isEditUnlocked();
 
   const editBtn = (sectionId) => admin
@@ -2518,7 +2541,7 @@ function _renderStudyGuide(guide) {
         <div class="sg-section-header">
           <span class="sg-section-title">강조 단어</span>${editBtn('emphasis')}
         </div>
-        <div id="sg-body-emphasis" class="sg-emphasis-wrap">${guide.emphasisWords.map(w => `<span class="sg-emphasis-badge">${esc(w)}</span>`).join('')}</div>
+        <div id="sg-body-emphasis" class="sg-emphasis-wrap">${guide.emphasisWords.map(w => `<span class="sg-emphasis-badge">${escR(w)}</span>`).join('')}</div>
        </div>` : '';
 
   // [3] 억양 — markedText+segments(신형) 또는 phrase+guide(구형) 렌더
@@ -2533,7 +2556,7 @@ function _renderStudyGuide(guide) {
           ? `<div class="sg-inton-marked-text">${_colorizeIntonText(d.markedText)}</div>`
           : `<div class="sg-inton-detail-top">
                <span class="sg-inton-symbol sg-inton-${dir}">${esc(sym)}</span>
-               <span class="sg-inton-phrase">${esc(d.phrase || '')}</span>
+               <span class="sg-inton-phrase">${escR(d.phrase || '')}</span>
              </div>`;
 
         // 신형: segments 구간별 설명
@@ -2544,7 +2567,7 @@ function _renderStudyGuide(guide) {
               return `<div class="sg-inton-segment">
                 <span class="sg-inton-symbol sg-inton-${sd}">${sa}</span>
                 <div class="sg-inton-seg-content">
-                  <span class="sg-inton-phrase">${esc(seg.text || '')}</span>
+                  <span class="sg-inton-phrase">${escR(seg.text || '')}</span>
                   <span class="sg-inton-guide">${esc(seg.reason || '')}</span>
                 </div>
               </div>`;
@@ -2608,8 +2631,8 @@ function _renderStudyGuide(guide) {
 // ─── 마스터 방송문 합성 (ko/en) ───────────────────────────────────────────
 // 핵심 원칙: replace(/\//g) 가 이미 삽입된 </b>, </span> 안의 / 를 건드리지 않도록
 // ⟦word⟧ → @@PH0@@ 플레이스홀더로 격리 → / 치환 먼저 → PH 복원(마지막)
-function buildMasterScript(scriptText, guideData) {
-  let text = String(scriptText || '');
+function buildMasterScript(scriptText, guideData, langCode) {
+  let text = _showReading ? _stripYomiLines(String(scriptText || ''), langCode) : String(scriptText || '');
 
   // 1단계: Firestore 데이터 HTML 태그 제거 후 기호 삽입 (순수 텍스트 유지)
   (guideData.breakPoints || []).forEach(bp => {
@@ -2678,7 +2701,7 @@ function buildMasterScript(scriptText, guideData) {
       ? `<span style="font-size:11px;font-weight:700;color:#6E6E73;background:#F2F2F7;border-radius:4px;padding:1px 5px;margin-right:5px">[${prefixLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}]</span>`
       : '';
 
-    return `<p style="margin:0 0 10px 0;line-height:2.0;">${prefix}${escaped}</p>`;
+    return `<p style="margin:0 0 10px 0;line-height:2.0;">${prefix}${_withReading(escaped, langCode)}</p>`;
   });
 
   const result = htmlLines.join('');
@@ -2694,7 +2717,7 @@ function _renderMasterScript(script, langCode, guide) {
   if (!lang?.text) return;
 
   // 마스터(annotated) HTML
-  const masterHtml = buildMasterScript(lang.text, guide);
+  const masterHtml = buildMasterScript(lang.text, guide, langCode);
 
   // 원본(toggle) HTML
   const tmpO = document.createElement('div');
