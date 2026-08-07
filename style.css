@@ -2756,10 +2756,12 @@ body.cvp-protected * {
 /* ===== 독음(일본어) / 병음(중국어) 루비 표기 ===== */
 .script-text-rendered ruby { ruby-align: center; }
 /* 일본어: 한글 독음을 아래에 */
+/* 독음이 원문보다 넓은 경우가 많아 문절 사이 여백을 넉넉히 둔다.
+   여백이 좁으면 옆 문절의 독음과 붙어 읽기 어려워진다. */
 ruby.rb-ja {
   ruby-position: under;
   -webkit-ruby-position: after;
-  margin: 0 1px;
+  margin: 0 6px 0 0;
 }
 ruby.rb-ja rt {
   font-size: 0.62em;
@@ -2769,10 +2771,12 @@ ruby.rb-ja rt {
   user-select: none;
 }
 /* 중국어: 병음을 위에 (교재 관례) */
+/* 병음은 한자 1자보다 훨씬 넓어(예: 请 → qǐng) 여백이 없으면 겹치거나
+   줄 끝에서 잘린다. 글자 간격을 벌리고 줄바꿈이 자연스럽게 일어나도록 한다. */
 ruby.rb-ca {
   ruby-position: over;
   -webkit-ruby-position: before;
-  margin: 0 1px;
+  margin: 0 4px;
 }
 ruby.rb-ca rt {
   font-size: 0.58em;
@@ -2782,7 +2786,20 @@ ruby.rb-ca rt {
 }
 /* 루비가 붙으면 줄 간격 확보 */
 .script-text-rendered p,
-.script-text-rendered .script-tagged-content { line-height: 2.6 !important; }
+.script-text-rendered .script-tagged-content { line-height: 3.0 !important; }
+
+/* 루비 주석(독음·병음)이 원문보다 넓어 잘리는 것을 방지 */
+.script-text-rendered,
+.script-text-rendered p,
+.script-text-rendered td,
+.script-table td,
+.sg-master-script,
+.break-guide-text,
+.sg-inton-phrase,
+.sg-emphasis-badge { overflow: visible !important; }
+.script-text-rendered ruby,
+.sg-master-script ruby { white-space: nowrap; }
+.script-text-rendered p, .sg-master-script { word-break: keep-all; overflow-wrap: break-word; }
 
 /* 독음 토글 버튼 */
 .btn-reading-toggle {
@@ -2807,3 +2824,23 @@ ruby.rb-ca rt {
   border-bottom: 1px dotted var(--color-warning);
   padding-bottom: 1px;
 }
+
+/* 강조 연출 (속도·톤·또렷·쉼) */
+.sg-tech-wrap { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.sg-tech-line {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 7px 10px; border-radius: var(--radius-sm);
+  background: var(--color-surface-alt, #faf7f8);
+  border-left: 3px solid var(--color-accent);
+  line-height: 2.4;
+}
+.sg-tech-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 8px;
+  border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+}
+.tech-slow  { background: #E8F3EC; color: #1B6B45; }
+.tech-tone  { background: #EDEAF7; color: #4B3B8F; }
+.tech-clear { background: #E6F0FA; color: #1D5A94; }
+.tech-pause { background: #FBEFE1; color: #8A5312; }
+.sg-tech-phrase { font-weight: 600; color: var(--color-text-primary); }
+.sg-tech-guide  { font-size: 13px; color: var(--color-text-secondary); }

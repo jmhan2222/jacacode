@@ -85,9 +85,10 @@ function _extractScriptNum(script) {
   // 점 형식 (예: "2.1.1")
   const numMatch = id.match(/^(\d+(?:\.\d+)*)/);
   if (numMatch) return numMatch[1];
-  // [별표 N] 패턴
-  const byeolMatch = id.match(/^(\[별표[^\]]*\])/);
-  if (byeolMatch) return byeolMatch[1];
+  // 별표 패턴 — ID는 '별표3-분실물' 형식이지만 파일명은 '[별표 3] 분실물...' 형식이다.
+  // 대괄호·공백 유무에 상관없이 번호만 뽑아 파일명 접두사로 정규화한다.
+  const byeolMatch = id.match(/^\[?\s*별표\s*(\d+)/);
+  if (byeolMatch) return `[별표 ${byeolMatch[1]}]`;
   // 제목에서 추출 시도
   const titleNum = (script.title || '').match(/^(\d+(?:\.\d+)*)/);
   if (titleNum) return titleNum[1];
@@ -334,6 +335,10 @@ function createModelVoicePlayer(containerId, opts = {}) {
 
 // ===== MODEL VOICE SCAN =====
 // 핵심 스캔 로직 (버튼 관리 없이 순수 매핑만 처리)
+// 스캔 결과 누락 목록 (관리자 확인용)
+let _mvMissing = [];
+let _mvNoFile  = [];
+
 async function _doScanLocalModelVoices() {
   const res = await fetch('./cabinvoice%20pro/manifest.json');
   if (!res.ok) throw new Error(`manifest.json 로드 실패 (${res.status})`);
@@ -341,6 +346,8 @@ async function _doScanLocalModelVoices() {
   if (!_db) throw new Error('Firebase 연결이 필요합니다');
 
   let matched = 0;
+  _mvMissing = [];   // 일부 언어 음성 누락
+  _mvNoFile  = [];   // 음성 파일 자체가 없음
   const batch = _db.batch();
 
   for (const script of _allScripts) {
@@ -361,18 +368,32 @@ async function _doScanLocalModelVoices() {
       if (file) modelFiles[`${lang}_F`] = file;
     }
 
-    console.log('[스캔]', num, '→', {
-      ko: modelFiles.ko || null, en: modelFiles.en || null
-    });
+    // 방송문이 실제로 보유한 언어에 대해서만 음성 유무를 따진다.
+    const need = ['ja', 'ca'].filter(l => script.langs?.[l]?.text);
+    const lack = [];
+    for (const l of need) {
+      if (!modelFiles[l])        lack.push(`${l}(남)`);
+      if (!modelFiles[`${l}_F`]) lack.push(`${l}(여)`);
+    }
+    if (lack.length) _mvMissing.push({ num, title: script.title, lack });
 
     if (Object.keys(modelFiles).length > 0) {
       batch.set(_db.collection('scripts').doc(firestoreId), { modelFiles }, { merge: true });
       matched++;
+    } else {
+      _mvNoFile.push({ num, title: script.title });
     }
   }
 
   await batch.commit();
   Object.keys(_mvUrlCache).forEach(k => delete _mvUrlCache[k]);
+  if (_mvMissing.length) {
+    console.warn('[스캔] 음성이 없는 언어 —', _mvMissing.length + '편');
+    _mvMissing.forEach(m => console.warn(`   ${m.num} ${m.title} : ${m.lack.join(', ')}`));
+  }
+  if (_mvNoFile.length) {
+    console.warn('[스캔] 음성 파일이 하나도 없는 방송문 —', _mvNoFile.map(m => `${m.num} ${m.title}`).join(' | '));
+  }
   return matched;
 }
 
@@ -2325,15 +2346,27 @@ async function callGeminiGuide(scriptText, langCode) {
 
   const langSpecific = {
     ja: `일본어 발음·억양 가이드 필수 포함 (비전공 학습자 대상):
-- 장음(ー·おう·えい 등) 위치와 길이 유지 포인트 예) 'とうきょう → 토ー쿄ー (4박)'
+- 장음(ー·おう·えい 등) 위치와 길이 유지 포인트 예) 'とうきょう → 토-쿄- (4박)'
 - 촉음(っ) 앞 멈춤 표시 예) 'しゅっぱつ → 슛(멈춤)파츠'
-- 문말 です/ます의 자연스러운 하강 억양(↘) 표시
-- 청음/탁음 구분이 헷갈리는 단어 짚기`,
+- 청음/탁음 구분이 헷갈리는 단어 짚기
+
+[일본어 억양 원칙 — 반드시 준수]
+일본어는 강세(stress)가 아니라 고저 악센트(高低アクセント) 언어다.
+- 주의를 끌기 위해 임의로 억양을 올리라고 지도하지 말 것.
+  한국어식으로 음을 올리면 오히려 부자연스럽고 의미 전달을 해친다.
+- 단어 본래의 고저 패턴(頭高·中高·尾高·平板)을 지키는 방향으로만 안내할 것.
+- 문말 です·ます는 자연스럽게 내려서(↘) 마무리한다. 올리면 감점 요인이다.
+- 승객 주의 환기가 필요한 구간은 '억양을 올린다'가 아니라
+  '앞에 한 박 쉬고 또박또박, 조금 느리게' 처럼 pause·속도로 안내할 것.`,
     ca: `중국어 발음·성조 가이드 필수 포함 (비전공 학습자 대상):
 - 핵심 단어의 병음과 성조 번호 표기 예) '旅客 lǚkè (3성+4성)'
 - 3성+3성 연속 시 앞 글자 2성 변조 등 성조 변화 규칙 표시
 - 권설음(zh/ch/sh/r)과 설치음(z/c/s) 구분 포인트
-- 경성(轻声) 처리 단어 짚기`
+- 경성(轻声) 처리 단어 짚기
+
+[중국어 억양 원칙 — 반드시 준수]
+- 성조가 최우선이다. 강조를 위해 성조를 무시하고 음을 올리라고 지도하지 말 것.
+- 강조는 성조를 지킨 상태에서 '속도를 늦추고 또렷하게' 로 안내할 것.`
   };
 
   const prompt = `당신은 항공사 기내방송 전문 교관입니다.
@@ -2344,6 +2377,22 @@ async function callGeminiGuide(scriptText, langCode) {
 
 방송문 (${langName}):
 ${scriptText}
+
+[끊어읽기 개수 제한 — 반드시 준수]
+breakPoints 는 '실제로 쉬어야 하는 곳'만 표시한다. 많을수록 좋은 것이 아니다.
+- 한 문장에 마크는 최대 2개, 방송문 전체로 6개를 넘기지 말 것.
+- 조사·접속사마다 기계적으로 넣지 말 것. 문장이 뚝뚝 끊겨 낭독체가 된다.
+- 넣어야 할 곳: 문장 종결, 나열 항목 사이, 의미 단위가 크게 바뀌는 지점.
+- 넣지 말 것: 한 호흡에 자연스럽게 이어지는 짧은 구, 수식어와 피수식어 사이.
+
+[강조 연출은 Pause만이 아니다 — 반드시 준수]
+강조를 전부 끊어읽기(pause)로 처리하면 방송이 부자연스러워진다.
+emphasisTechniques 에 구간별로 아래 수단을 나눠 배정할 것 (pause 편중 금지):
+- slow  : 속도를 늦춰 강조 (편명·목적지·시간·숫자에 적합)
+- tone  : 톤을 살짝 낮추거나 차분하게 하여 무게를 실음 (안전·주의 사항에 적합)
+- clear : 또렷한 발음으로 강조 (혼동되기 쉬운 단어에 적합)
+- pause : 앞뒤에 쉼을 두어 강조 (문장 전환, 중요 안내 도입부에만 제한적으로)
+pause 는 emphasisTechniques 전체의 1/3 이하로 유지할 것.
 
 중요: 학습 가이드의 설명(summary, breakPoints의 reason, speedGuide, intonationGuide, tips)은 반드시 한국어로 작성하세요.
 
@@ -2386,6 +2435,10 @@ ${langSpecific[langCode] || langSpecific.ko}
     }
   ],
   "emphasisWords": ["강조할 단어/구1 (원어)", "..."],
+  "emphasisTechniques": [
+    { "phrase": "강조 구간 (원어, 원문 그대로)", "how": "slow 또는 tone 또는 pause 또는 clear",
+      "guide": "구체적 연출 지시 (한국어)" }
+  ],
   "speedGuide": "속도 가이드 (한국어)",
   "intonationGuide": "전체 억양 개요 (한국어)",
   "intonationDetails": [
@@ -2594,6 +2647,20 @@ function _renderStudyGuide(guide) {
           <span class="sg-section-title">강조 단어</span>${editBtn('emphasis')}
         </div>
         <div id="sg-body-emphasis" class="sg-emphasis-wrap">${guide.emphasisWords.map(w => `<span class="sg-emphasis-badge">${escR(w)}</span>`).join('')}</div>
+        ${Array.isArray(guide.emphasisTechniques) && guide.emphasisTechniques.length ? `
+        <div class="sg-tech-wrap">
+          ${guide.emphasisTechniques.map(t => {
+            const meta = { slow:  ['🐢', '천천히', 'tech-slow'],
+                           tone:  ['🎚', '톤 조절', 'tech-tone'],
+                           clear: ['🔎', '또렷하게', 'tech-clear'],
+                           pause: ['⏸', '쉼', 'tech-pause'] }[t.how] || ['•', '강조', 'tech-clear'];
+            return `<div class="sg-tech-line">
+              <span class="sg-tech-badge ${meta[2]}">${meta[0]} ${meta[1]}</span>
+              <span class="sg-tech-phrase">${escR(t.phrase || '')}</span>
+              <span class="sg-tech-guide">${esc(t.guide || '')}</span>
+            </div>`;
+          }).join('')}
+        </div>` : ''}
        </div>` : '';
 
   // [3] 억양 — markedText+segments(신형) 또는 phrase+guide(구형) 렌더
@@ -5021,7 +5088,10 @@ async function _scanLocalModelVoices() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 스캔 중...'; }
   try {
     const matched = await _doScanLocalModelVoices();
-    showToast(`✅ ${matched}개 방송문 매핑 완료`);
+    const _lackN = _mvMissing.length;
+    showToast(_lackN
+      ? `✅ ${matched}개 매핑 완료 · ${_lackN}편은 일부 언어 음성 누락 (콘솔 확인)`
+      : `✅ ${matched}개 방송문 매핑 완료`, _lackN ? 6000 : 3000);
     console.log(`[스캔] ${matched}개 방송문 modelFiles 저장 완료`);
   } catch (e) {
     showToast(`스캔 실패: ${e.message}`);
@@ -5735,9 +5805,43 @@ async function _runBulkGuideGeneration() {
   let done = 0;
   let failed = 0;
 
-  const BATCH_SIZE = 15;
-  const BATCH_WAIT_SEC = 60;
-  let inBatchCount = 0;
+  // ── API 호출 페이싱 ──────────────────────────────────────────────
+  // 무료 등급 한도는 대략 10~15 RPM. 몰아서 보내면 즉시 429가 나므로
+  // '일정 간격'으로 고르게 내보낸다. 배치 후 장시간 대기보다 총 소요시간이 짧다.
+  // 방송문 1편당 일본어·중국어 2회를 호출한다는 점에 유의할 것.
+  const MIN_INTERVAL_MS = 6500;   // 호출 간 최소 간격 ≈ 9 RPM (한도 10 아래로 여유)
+  const QUOTA_WAIT_SEC  = 60;     // 429 발생 시 회복 대기(초)
+  let _lastCallAt = 0;
+  let _callsLeft = 0;             // 남은 호출 수 (ETA 표시용)
+
+  const _isQuotaErr = e => /quota|429|RESOURCE_EXHAUSTED|한도/i.test(String(e?.message || e));
+  // 일일 한도(RPD)는 대기로 회복되지 않으므로 구분한다.
+  const _isDailyErr = e => /per day|daily|RPD|일일/i.test(String(e?.message || e));
+
+  const _fmtEta = n => {
+    const sec = Math.round(n * MIN_INTERVAL_MS / 1000);
+    return sec >= 60 ? `약 ${Math.ceil(sec / 60)}분` : `약 ${sec}초`;
+  };
+  // 직전 호출로부터 최소 간격이 지날 때까지 대기
+  const _pace = async () => {
+    const wait = _lastCallAt ? MIN_INTERVAL_MS - (Date.now() - _lastCallAt) : 0;
+    if (wait > 0) await new Promise(x => setTimeout(x, wait));
+    _lastCallAt = Date.now();
+  };
+  const _quotaWait = async (label) => {
+    for (let r = QUOTA_WAIT_SEC; r > 0; r--) {
+      if (progressEl) progressEl.textContent = `${label} · API 한도 회복 대기 (${r}초 남음)`;
+      await new Promise(x => setTimeout(x, 1000));
+    }
+    _lastCallAt = 0;
+  };
+
+  // 총 호출 수 = 각 방송문이 보유한 언어 수의 합 (ETA 계산용)
+  _callsLeft = ids.reduce((n, id) => {
+    const sc = _allScripts.find(a => a.id === id);
+    return n + (sc ? ['ja', 'ca'].filter(l => sc.langs?.[l]?.text).length : 0);
+  }, 0);
+  let _dailyStop = false;   // 일일 한도 도달 시 전체 중단
 
   for (const id of ids) {
     const s = _allScripts.find(a => a.id === id);
@@ -5747,38 +5851,42 @@ async function _runBulkGuideGeneration() {
     for (const _lg of _langs) {
       const _lgName = _lg === 'ca' ? '中文' : '日本語';
       if (progressEl) progressEl.textContent =
-        `⏳ ${done + 1}/${total} 생성 중... (${escHtml(s.title)} · ${_lgName})`;
-      try {
-        const guide = await callGeminiGuide(s.langs[_lg].text, _lg);
-        await _saveGuideToFirestore(s.id, _lg, guide);
-        _studyGuideCache[`${s.id}_${_lg}`] = guide;
-      } catch (e) {
-        console.error(`[일괄가이드] ${s.id}/${_lg} 실패:`, e.message);
-        _okAll = false;
+        `⏳ ${done + 1}/${total} · ${escHtml(s.title)} · ${_lgName} — 남은 시간 ${_fmtEta(_callsLeft)}`;
+      let _saved = false;
+      for (let _try = 0; _try < 3 && !_saved; _try++) {
+        await _pace();
+        try {
+          const guide = await callGeminiGuide(s.langs[_lg].text, _lg);
+          await _saveGuideToFirestore(s.id, _lg, guide);
+          _studyGuideCache[`${s.id}_${_lg}`] = guide;
+          _saved = true;
+        } catch (e) {
+          // 일일 한도는 기다려도 회복되지 않으므로 즉시 중단한다.
+          if (_isDailyErr(e)) { _dailyStop = true; _okAll = false; break; }
+          // 분당 한도는 회복 대기 후 재시도 (최대 2회)
+          if (_isQuotaErr(e) && _try < 2) { await _quotaWait(`${done}/${total} 완료`); continue; }
+          console.error(`[일괄가이드] ${s.id}/${_lg} 실패:`, e.message);
+          _okAll = false;
+        }
       }
+      _callsLeft--;
+      if (_dailyStop) break;
     }
+    if (_dailyStop) { failed++; break; }
     if (_okAll) { try { await _clearGuideUpdateNeeded(s.id); } catch {} }
     else failed++;
     done++;
-    inBatchCount++;
-
     if (done >= total) break;
 
-    if (inBatchCount >= BATCH_SIZE) {
-      inBatchCount = 0;
-      for (let remain = BATCH_WAIT_SEC; remain > 0; remain--) {
-        if (progressEl) progressEl.textContent = `${done}개 완료. API 한도로 인해 ${BATCH_WAIT_SEC}초 대기 중... (${remain}초 남음)`;
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    } else {
-      await new Promise(r => setTimeout(r, 1000));
-    }
   }
 
   _adminGuideRunning = false;
   if (btn) btn.disabled = false;
   if (progressEl) progressEl.classList.add('hidden');
-  showToast(failed > 0 ? `${done - failed}/${total} 완료, ${failed}개 실패` : `${total}개 가이드 생성 완료 ✓`, 4000);
+  showToast(
+    _dailyStop ? `일일 API 한도에 도달해 중단했습니다. ${done - failed}/${total} 완료 — 내일 이어서 진행하세요.`
+    : failed > 0 ? `${done - failed}/${total} 완료, ${failed}개 실패`
+    : `${total}개 가이드 생성 완료 ✓`, _dailyStop ? 7000 : 4000);
   _loadAdminGuideStatuses();
 }
 
