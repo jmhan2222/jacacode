@@ -2258,7 +2258,7 @@ JSON 외 어떤 텍스트도 포함하지 말 것.
       contents: [{ parts: [{ text: simplePrompt }] }]
     })
   }, { statusEl: $('study-guide-status') });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw new Error(await _describeApiError(res));
   const data = await res.json();
   const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
   const m = raw.match(/\{[\s\S]*\}/);
@@ -2291,6 +2291,25 @@ async function fetchWithRetry(url, options, { maxRetries = 5, statusEl = null } 
     return res;
   }
   throw new Error('최대 재시도 횟수 초과');
+}
+
+// API 응답 실패 원인을 구체적으로 해석한다.
+// 404는 원인이 둘로 갈리므로 응답 본문으로 구분한다.
+//  - Cloudflare가 HTML을 반환 → /api/gemini 함수 미배포 (functions/ 누락 또는 빌드 설정)
+//  - Gemini가 JSON 오류 반환  → 모델명 미지원 또는 API 키 권한 문제
+async function _describeApiError(res) {
+  let body = '';
+  try { body = await res.text(); } catch {}
+  const isHtml = /^\s*<(!doctype|html)/i.test(body);
+  if (res.status === 404) {
+    return isHtml
+      ? 'API 경로를 찾을 수 없습니다. Cloudflare Pages에 functions/api/gemini.js 가 배포됐는지 확인하세요.'
+      : 'Gemini 모델을 찾을 수 없습니다. API 키 권한 또는 모델명(gemini-2.5-flash)을 확인하세요.'
+        + (body ? ' | ' + body.slice(0, 160) : '');
+  }
+  let msg = '';
+  try { msg = JSON.parse(body)?.error || ''; } catch {}
+  return msg || `HTTP ${res.status}` + (body ? ' | ' + body.slice(0, 160) : '');
 }
 
 async function callGeminiGuide(scriptText, langCode) {
@@ -2385,7 +2404,7 @@ ${langSpecific[langCode] || langSpecific.ko}
     })
   }, { statusEl: $('study-guide-status') });
   if (res.status === 501) throw new Error('로컬 환경에서는 배포 후 사용 가능합니다.');
-  if (!res.ok) throw new Error(res.status === 503 ? '일시적인 서버 오류입니다. 잠시 후 다시 시도해주세요.' : `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(res.status === 503 ? '일시적인 서버 오류입니다. 잠시 후 다시 시도해주세요.' : await _describeApiError(res));
   const data = await res.json();
   const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
 
