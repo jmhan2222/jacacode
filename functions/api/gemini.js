@@ -18,7 +18,8 @@ export async function onRequestPost(context) {
     return Response.json({ error: '잘못된 요청 형식입니다.' }, { status: 400 });
   }
 
-  const model = body.model || 'gemini-1.5-flash';
+  // 클라이언트가 model 을 지정하지 않은 경우의 기본값. main.js 의 GEMINI_MODEL 과 맞출 것.
+  const model = body.model || 'gemini-3.6-flash';
   const contents = body.contents;
 
   if (!contents) {

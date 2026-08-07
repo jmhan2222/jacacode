@@ -2,6 +2,14 @@
 const SURVEY_URL = 'https://works.do/xVpdWbl';
 
 // ===== FIREBASE =====
+// Gemini 모델명 — 여기 한 곳만 바꾸면 앱 전체에 반영된다.
+// 주의: Google이 모델을 예고보다 앞당겨 퇴역시키는 경우가 있다.
+//   2026-07-09 gemini-2.5-flash 가 공식 종료일(10/16)보다 먼저 404 처리됨.
+//   특히 신규 프로젝트/신규 API 키는 구모델 접근이 즉시 차단된다.
+// 404 "no longer available" 이 뜨면 아래 값을 최신 모델로 교체할 것.
+//   최신 모델 확인: https://ai.google.dev/gemini-api/docs/models
+const GEMINI_MODEL = 'gemini-3.6-flash';
+
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyA2rfs2oY80xb374uyYdc5dVlMgac08OWo",
   authDomain: "voicepro-18888.firebaseapp.com",
@@ -493,7 +501,7 @@ async function getGeminiModel() {
           const res = await fetch('/api/gemini', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'gemini-2.5-flash', contents })
+            body: JSON.stringify({ model: GEMINI_MODEL, contents })
           });
           const data = await res.json();
           if (!res.ok) {
@@ -2254,7 +2262,7 @@ JSON 외 어떤 텍스트도 포함하지 말 것.
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'gemini-2.5-flash',
+      model: GEMINI_MODEL,
       contents: [{ parts: [{ text: simplePrompt }] }]
     })
   }, { statusEl: $('study-guide-status') });
@@ -2304,7 +2312,7 @@ async function _describeApiError(res) {
   if (res.status === 404) {
     return isHtml
       ? 'API 경로를 찾을 수 없습니다. Cloudflare Pages에 functions/api/gemini.js 가 배포됐는지 확인하세요.'
-      : 'Gemini 모델을 찾을 수 없습니다. API 키 권한 또는 모델명(gemini-2.5-flash)을 확인하세요.'
+      : `Gemini 모델(${GEMINI_MODEL})을 사용할 수 없습니다. 모델이 퇴역했거나 API 키 권한 문제입니다. main.js 상단 GEMINI_MODEL 을 최신 모델로 교체하세요.`
         + (body ? ' | ' + body.slice(0, 160) : '');
   }
   let msg = '';
@@ -2399,7 +2407,7 @@ ${langSpecific[langCode] || langSpecific.ko}
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'gemini-2.5-flash',
+      model: GEMINI_MODEL,
       contents: [{ parts: [{ text: prompt }] }]
     })
   }, { statusEl: $('study-guide-status') });
@@ -4716,7 +4724,7 @@ ${sharedJson}`;
         headers: { 'Content-Type': 'application/json' },
         signal: _audioController.signal,
         body: JSON.stringify({
-          model: 'gemini-2.5-flash',
+          model: GEMINI_MODEL,
           contents: [{
             parts: [
               { inline_data: { mime_type: audioBlob.type || 'audio/webm', data: base64Audio } },
