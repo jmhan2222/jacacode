@@ -2410,7 +2410,9 @@ async function _loadGuideFromFirestore(scriptId, langCode) {
 // ─── 끊어읽기 텍스트 기호 변환 ────────────────────────────────────────────
 // 신형: ∙(반박자→초록) /(한박자→파랑)  구형: ,(반박자) |(한박자) 호환
 function _colorizeBreakText(text) {
-  return escHtml(String(text || '')).replace(/,\(반박자\)|\|\(한박자\)|∙|\/|,|\|/g, m => {
+  // 주의: 기호 치환을 먼저 끝낸 뒤 독음을 붙인다.
+  // 순서가 바뀌면 </ruby>·</rt> 의 '/' 가 한박자 기호로 오인되어 마크업이 깨진다.
+  const marked = escHtml(String(text || '')).replace(/,\(반박자\)|\|\(한박자\)|∙|\/|,|\|/g, m => {
     if (m === ',(반박자)') return '<span class="sg-bp-short">∙<small>(반박자)</small></span>';
     if (m === '|(한박자)') return '<span class="sg-bp-long">/<small>(한박자)</small></span>';
     if (m === '∙')         return '<span class="sg-bp-short">∙</span>';
@@ -2419,16 +2421,18 @@ function _colorizeBreakText(text) {
     if (m === '|')         return '<span class="sg-bp-long">/</span>';
     return m;
   });
+  return _withReading(marked, state.selectedLang);
 }
 
 // ─── 억양 markedText 기호 착색 (↗→빨강, ↘→파랑, →→초록) ──────────────
 function _colorizeIntonText(text) {
-  return escHtml(String(text || '')).replace(/↗|↘|→/g, m => {
+  const marked = escHtml(String(text || '')).replace(/↗|↘|→/g, m => {
     if (m === '↗') return '<sup class="sg-inton-arrow sg-inton-up">↗</sup>';
     if (m === '↘') return '<sup class="sg-inton-arrow sg-inton-down">↘</sup>';
     if (m === '→') return '<sup class="sg-inton-arrow sg-inton-flat">→</sup>';
     return m;
   });
+  return _withReading(marked, state.selectedLang);
 }
 
 // ─── 끊어읽기 항목 렌더 ───────────────────────────────────────────────────
@@ -2442,7 +2446,7 @@ function _renderBreakItem(b) {
       const badge = m.type === 'half'
         ? `<span class="sg-bp-short">∙ 반박자</span>`
         : `<span class="sg-bp-long">/ 한박자</span>`;
-      return `<div class="break-guide-line">${badge} <strong>${escHtml(m.position)}</strong> — ${escHtml(m.reason)}</div>`;
+      return `<div class="break-guide-line">${badge} <strong>${_withReading(escHtml(m.position), state.selectedLang)}</strong> — ${escHtml(m.reason)}</div>`;
     }).join('');
     return `<div class="break-script-line">${scriptHtml}</div>${marksHtml}`;
   }
