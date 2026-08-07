@@ -1309,9 +1309,16 @@ function _stripYomiLines(text, lang) {
   for (let i = 0; i < lines.length; i++) {
     const L = lines[i], t = L.trim();
     const koCount = (t.match(/[가-힣]/g) || []).length;
+    const nxt = (lines[i+1] || '').trim();
+    const bracketed = t.startsWith('[') && t.endsWith(']');
+    // 일반 독음 줄: 대괄호 아님 + 다음 줄에 가나
+    // 선택 문안 독음 줄: 대괄호로 감쌈 + 다음 줄도 대괄호이면서 가나 포함
+    //   예) [오하요-고자이마스 / 곤니치와] ↔ [おはようございます。/ こんにちは。]
     const isYomi = t && !hasKana(t) && !/[\u4e00-\u9fff]/.test(t) && koCount >= 3
-                   && !(t.startsWith('[') && t.endsWith(']')) && !t.includes('|')
-                   && hasKana(lines[i+1] || '');
+                   && !t.includes('|')
+                   && (bracketed
+                        ? (nxt.startsWith('[') && nxt.endsWith(']') && hasKana(nxt))
+                        : hasKana(nxt));
     if (!isYomi) out.push(L);
   }
   return out.join('\n');
@@ -1375,8 +1382,13 @@ function _renderKoEnText(text, lang) {
     }
 
     // Section tag line: [TAG] content  OR  [TAG] alone on line
-    const tagMatch = tr.match(/^\[([^\]]+)\]\s+(.*)/);
-    const soloTagMatch = !tagMatch && tr.match(/^\[([^\]]+)\]$/);
+    // 태그는 한국어 라벨([General], [목적지], [10분 초과 지연 시] 등)만 해당.
+    // 대괄호 안에 가나·한자가 들어있으면 선택 문안(본문)이므로 태그로 보지 않는다.
+    const _isScriptBracket = s => /[\u3040-\u30ff\u4e00-\u9fff]/.test(s);
+    let tagMatch = tr.match(/^\[([^\]]+)\]\s+(.*)/);
+    if (tagMatch && _isScriptBracket(tagMatch[1])) tagMatch = null;
+    let soloTagMatch = !tagMatch && tr.match(/^\[([^\]]+)\]$/);
+    if (soloTagMatch && _isScriptBracket(soloTagMatch[1])) soloTagMatch = null;
 
     if (tagMatch || soloTagMatch) {
       flushTable();
@@ -2306,7 +2318,16 @@ async function callGeminiGuide(scriptText, langCode) {
 방송문 (${langName}):
 ${scriptText}
 
-중요: 방송문이 영어이더라도 학습 가이드(summary, breakPoints 설명, speedGuide, intonationGuide, tips)는 반드시 한국어로 작성하세요. 단, emphasisWords와 intonationDetails의 phrase, breakPoints의 실제 방송문 구간은 원어 그대로 표시하고 설명만 한국어로 작성하세요.
+중요: 학습 가이드의 설명(summary, breakPoints의 reason, speedGuide, intonationGuide, tips)은 반드시 한국어로 작성하세요.
+
+[원문 인용 규칙 — 반드시 준수]
+emphasisWords, intonationDetails의 phrase/markedText, breakPoints의 text/position 에 들어가는 방송문 구간은
+위에 주어진 방송문에서 **한 글자도 바꾸지 말고 그대로 복사**하세요.
+- 히라가나로 적힌 것을 한자로 바꾸지 마세요. 예) ひこうき 를 飛行機 로 쓰면 안 됨
+- 한자로 적힌 것을 히라가나로 바꾸지 마세요.
+- 띄어쓰기·구두점·기호도 원문 그대로 유지하세요.
+- 이 앱은 원문과 정확히 일치하는 구간에만 독음(후리가나)을 붙입니다.
+  표기를 바꾸면 학습자에게 독음이 표시되지 않아 학습이 불가능해집니다.
 
 끊어읽기 가이드 작성 규칙:
 1. 각 문장마다 끊어읽기 기호를 삽입한 텍스트를 text 필드에 제공
@@ -6163,11 +6184,19 @@ document.addEventListener('DOMContentLoaded', () => {
       _saveGuideToFirestore(s.id, lang, guide);
       console.log('[완료] AI 학습 가이드 생성 및 저장');
     } catch (e) {
-      statusEl.textContent = '가이드 생성에 실패했습니다. 다시 시도해주세요.';
+      // 원인을 화면에 노출 — '다시 시도'만으로는 해결되지 않는 경우가 많음
+      const _msg = String(e?.message || e || '');
+      const _hint = /quota|429|RESOURCE_EXHAUSTED/i.test(_msg) ? 'API 사용량 한도 초과 — 잠시 후 다시 시도하세요.'
+                  : /JSON|parse|Unexpected/i.test(_msg)        ? '응답 형식 오류 — 다시 시도하면 대개 해결됩니다.'
+                  : /timeout|network|fetch|Failed to fetch/i.test(_msg) ? '네트워크 오류 — 연결 확인 후 다시 시도하세요.'
+                  : /401|403|API key|PERMISSION/i.test(_msg)   ? 'API 키 오류 — 관리자에게 문의하세요.'
+                  : /safety|blocked|SAFETY/i.test(_msg)        ? '안전 필터에 차단됨 — 방송문 내용을 확인하세요.'
+                  : '';
+      statusEl.textContent = '가이드 생성에 실패했습니다. ' + (_hint || _msg.slice(0, 120));
       statusEl.className = 'study-guide-error';
       guideBtn.disabled = false;
       guideBtn.textContent = '가이드 생성하기';
-      console.error('[가이드 생성 실패]', e.message);
+      console.error('[가이드 생성 실패]', e);
     }
   });
   // 학습 화면 하단 버튼
