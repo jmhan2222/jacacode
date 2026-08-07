@@ -4047,8 +4047,8 @@ async function saveScriptFromModal() {
     // 레거시 단일 pending 폴백
     const pendingVoice = localStorage.getItem('cabinvoice_voice__pending');
     if (pendingVoice) {
-      localStorage.setItem(`cabinvoice_voice_${id}_ko`, pendingVoice);
-      localStorage.setItem(`cabinvoice_voice_${id}_ko_name`, localStorage.getItem('cabinvoice_voice__pending_name') || '모델 음성');
+      localStorage.setItem(`cabinvoice_voice_${id}_ja`, pendingVoice);
+      localStorage.setItem(`cabinvoice_voice_${id}_ja_name`, localStorage.getItem('cabinvoice_voice__pending_name') || '모델 음성');
       localStorage.removeItem('cabinvoice_voice__pending');
       localStorage.removeItem('cabinvoice_voice__pending_name');
     }
@@ -5686,17 +5686,26 @@ async function _loadAdminGuideStatuses() {
 
   await _fetchGuideUpdateFlags();
 
+  // 방송문이 보유한 언어(ja/ca)별로 가이드 존재 여부를 각각 확인한다.
+  // 모두 있어야 '완성', 하나라도 없으면 '미생성'.
   const results = await Promise.all(_allScripts.map(async s => {
+    const langs = ['ja', 'ca'].filter(l => s.langs?.[l]?.text);
     try {
-      const snap = await _db.collection('scripts').doc(s.id).collection('studyGuide').doc('ko').get();
-      return { s, hasGuide: snap.exists, needsUpdate: _guideUpdateNeededIds.has(s.id) };
-    } catch { return { s, hasGuide: false, needsUpdate: false }; }
+      const snaps = await Promise.all(langs.map(l =>
+        _db.collection('scripts').doc(s.id).collection('studyGuide').doc(l).get()));
+      const have = snaps.filter(x => x.exists).length;
+      return { s, langs, have,
+               hasGuide: langs.length > 0 && have === langs.length,
+               needsUpdate: _guideUpdateNeededIds.has(s.id) };
+    } catch { return { s, langs, have: 0, hasGuide: false, needsUpdate: false }; }
   }));
 
   let html = '';
-  for (const { s, hasGuide, needsUpdate } of results) {
+  for (const { s, hasGuide, needsUpdate, langs, have } of results) {
+    const _part = (langs && langs.length > 1 && have > 0 && have < langs.length)
+      ? ` (${have}/${langs.length})` : '';
     const statusBadge = !hasGuide
-      ? '<span class="admin-guide-badge badge-guide-none">❌ 미생성</span>'
+      ? `<span class="admin-guide-badge badge-guide-none">❌ 미생성${_part}</span>`
       : needsUpdate
         ? '<span class="admin-guide-badge badge-guide-update">🔄 업데이트 필요</span>'
         : '<span class="admin-guide-badge badge-guide-done">✅ 완성</span>';
@@ -5732,17 +5741,24 @@ async function _runBulkGuideGeneration() {
 
   for (const id of ids) {
     const s = _allScripts.find(a => a.id === id);
-    if (!s || !s.langs?.ja?.text) { done++; continue; }
-    if (progressEl) progressEl.textContent = `⏳ ${done + 1}/${total} 생성 중... (${escHtml(s.title)})`;
-    try {
-      const guide = await callGeminiGuide(s.langs.ja.text, 'ja');
-      await _saveGuideToFirestore(s.id, 'ja', guide);
-      await _clearGuideUpdateNeeded(s.id);
-      _studyGuideCache[`${s.id}_ja`] = guide;
-    } catch (e) {
-      console.error(`[일괄가이드] ${s.id} 실패:`, e.message);
-      failed++;
+    const _langs = s ? ['ja', 'ca'].filter(l => s.langs?.[l]?.text) : [];
+    if (!s || !_langs.length) { done++; continue; }
+    let _okAll = true;
+    for (const _lg of _langs) {
+      const _lgName = _lg === 'ca' ? '中文' : '日本語';
+      if (progressEl) progressEl.textContent =
+        `⏳ ${done + 1}/${total} 생성 중... (${escHtml(s.title)} · ${_lgName})`;
+      try {
+        const guide = await callGeminiGuide(s.langs[_lg].text, _lg);
+        await _saveGuideToFirestore(s.id, _lg, guide);
+        _studyGuideCache[`${s.id}_${_lg}`] = guide;
+      } catch (e) {
+        console.error(`[일괄가이드] ${s.id}/${_lg} 실패:`, e.message);
+        _okAll = false;
+      }
     }
+    if (_okAll) { try { await _clearGuideUpdateNeeded(s.id); } catch {} }
+    else failed++;
     done++;
     inBatchCount++;
 
