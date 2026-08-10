@@ -35,7 +35,31 @@ function lookupYomi(token) {
     const got = parts.map(p => CAM_JA_YOMI[p]);
     if (got.every(Boolean)) return got.join(' ');
   }
-  return null;
+  // 마지막 수단: 사전 항목들의 조합으로 분해 (교범과 띄어쓰기가 다른 경우)
+  // 예) 'また、でんしきき' → 'また' + 'でんしきき'
+  const combo = _splitByDict(n);
+  return combo;
+}
+
+// 문자열을 사전 항목의 연속으로 분해한다. 최장 일치 우선, 실패 시 null.
+const _RD_SPLIT_CACHE = {};
+function _splitByDict(s) {
+  if (s in _RD_SPLIT_CACHE) return _RD_SPLIT_CACHE[s];
+  const MAXLEN = 24;
+  const solve = (str) => {
+    if (!str) return [];
+    for (let L = Math.min(MAXLEN, str.length); L >= 2; L--) {
+      const head = str.slice(0, L);
+      if (!CAM_JA_YOMI[head]) continue;
+      const rest = solve(str.slice(L));
+      if (rest) return [CAM_JA_YOMI[head], ...rest];
+    }
+    return null;
+  };
+  const r = solve(s);
+  const out = r && r.length ? r.join(' ') : null;
+  _RD_SPLIT_CACHE[s] = out;
+  return out;
 }
 
 // HTML 조각에 ruby 주석 부착. 태그 내부는 건드리지 않음.

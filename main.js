@@ -1369,6 +1369,7 @@ function _renderKoEnText(text, lang) {
   let html = '';
   let tableRows = [];  // markdown pipe tables
   let taggedRows = []; // [TAG] content section lines
+  let pendingTagRow = false; // 단독 태그 줄이 다음 본문 줄을 기다리는 중
 
   const flushTable = () => {
     if (!tableRows.length) return;
@@ -1431,11 +1432,20 @@ function _renderKoEnText(text, lang) {
         html += `<div class="script-conditional"><span class="script-section-badge">필요 시</span>${content ? hv(content) : ''}</div>`;
       } else {
         taggedRows.push({ tag, content });
+        // 단독 태그 줄([10분 초과 지연 시] 등)은 본문이 다음 줄에 온다.
+        // 표시하지 않으면 빈 행이 생기고 본문이 표 밖으로 밀려난다.
+        if (!content) pendingTagRow = true;
       }
       continue;
     }
 
     // Regular text line
+    if (pendingTagRow) {
+      if (!tr) continue;                       // 태그와 본문 사이 빈 줄은 건너뜀
+      taggedRows[taggedRows.length - 1].content = tr;
+      pendingTagRow = false;
+      continue;
+    }
     flushTable();
     flushTaggedRows();
     if (!tr) {
@@ -1444,6 +1454,7 @@ function _renderKoEnText(text, lang) {
       html += `<p style="margin:0 0 8px 0;line-height:1.8;">${hv(tr)}</p>`;
     }
   }
+  pendingTagRow = false;
 
   flushTable();
   flushTaggedRows();
@@ -3927,7 +3938,7 @@ function _resetModal() {
   document.querySelectorAll('.modal-lang-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.modal-lang-panel').forEach(p => p.classList.remove('active'));
   document.querySelector('.modal-lang-tab[data-lang="ja"]').classList.add('active');
-  document.getElementById('modal-lang-ko').classList.add('active');
+  document.getElementById('modal-lang-ja').classList.add('active');
   // table builder
   $('table-builder').classList.add('hidden');
   $('btn-table-toggle').classList.remove('active');
@@ -4007,8 +4018,8 @@ function closeCustomModal() { $('custom-modal').classList.add('hidden'); }
 async function saveScriptFromModal() {
   const title = document.getElementById('custom-title').value.trim();
   if (!title) { alert('방송 제목을 입력해 주세요.'); document.getElementById('custom-title').focus(); return; }
-  const koText = document.getElementById('custom-text-ko').value.trim();
-  if (!koText) { alert('한국어 방송 원문은 필수 입력입니다.'); document.getElementById('custom-text-ko').focus(); return; }
+  const koText = document.getElementById('custom-text-ja').value.trim();
+  if (!koText) { alert('일본어 방송 원문은 필수 입력입니다.'); document.getElementById('custom-text-ja').focus(); return; }
 
   const icon = document.getElementById('custom-icon').value.trim() || '📋';
   const difficulty = document.getElementById('custom-difficulty').value;
@@ -6197,7 +6208,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('tb-insert-btn').addEventListener('click', () => {
     const cols = parseInt($('tb-cols').value, 10);
     const rows = parseInt($('tb-rows').value, 10);
-    const ta = document.getElementById('custom-text-ko');
+    const ta = document.getElementById('custom-text-ja');
     const header = '|' + Array.from({length:cols}, (_,i)=>`열${i+1}`).join('|') + '|';
     const sep    = '|' + Array(cols).fill('---').join('|') + '|';
     const dataRow= '|' + Array(cols).fill('내용').join('|') + '|';
