@@ -2844,3 +2844,35 @@ ruby.rb-ca rt {
 .tech-pause { background: #FBEFE1; color: #8A5312; }
 .sg-tech-phrase { font-weight: 600; color: var(--color-text-primary); }
 .sg-tech-guide  { font-size: 13px; color: var(--color-text-secondary); }
+
+/* 생략 가능 / 필요 시 구간 — 어디까지가 해당 구간인지 명확히 구분 */
+.script-optional, .script-conditional {
+  padding: 10px 14px 10px 12px;
+  margin: 10px 0;
+  border-radius: var(--radius-sm);
+  border-left: 4px solid;
+}
+.script-optional   { background: #FDF6E3; border-left-color: #C9911F; }
+.script-conditional{ background: #EEF3FB; border-left-color: #3B6FA8; }
+.script-optional .script-section-badge,
+.script-conditional .script-section-badge {
+  display: inline-block; margin-bottom: 6px; margin-right: 8px;
+  font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px;
+}
+.script-optional .script-section-badge   { background: #C9911F; color: #fff; }
+.script-conditional .script-section-badge{ background: #3B6FA8; color: #fff; }
+
+/* 교범 붙여넣기 변환 */
+.cam-import-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 10px; padding: 8px 10px;
+  background: var(--color-surface-alt, #faf7f8);
+  border-radius: var(--radius-sm);
+}
+.btn-cam-import {
+  background: var(--color-primary); color: #fff; border: none;
+  padding: 7px 14px; border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.btn-cam-import:hover { background: var(--color-primary-light); }
+.cam-import-hint { font-size: 12px; color: var(--color-text-secondary); }

@@ -426,6 +426,10 @@
           <button class="modal-lang-tab" data-lang="ca">🇨🇳 中文</button>
         </div>
         <div id="modal-lang-ja" class="modal-lang-panel active">
+          <div class="cam-import-bar">
+            <button type="button" class="btn-cam-import" data-target="ja">📄 교범 붙여넣기 변환</button>
+            <span class="cam-import-hint">교범 PDF에서 복사한 내용을 앱 형식으로 정리합니다</span>
+          </div>
           <div class="modal-field">
             <label>방송 원문 (일본어) <span class="required">*</span></label>
             <textarea id="custom-text-ja" rows="7" placeholder="일본어 방송문(히라가나)을 여기에 붙여넣으세요..."></textarea>
@@ -457,6 +461,10 @@
           </div>
         </div>
         <div id="modal-lang-ca" class="modal-lang-panel">
+          <div class="cam-import-bar">
+            <button type="button" class="btn-cam-import" data-target="ca">📄 교범 붙여넣기 변환</button>
+            <span class="cam-import-hint">교범 PDF에서 복사한 내용을 앱 형식으로 정리합니다</span>
+          </div>
           <div class="modal-field">
             <label>방송 원문 (중국어) <span class="optional">(선택)</span></label>
             <textarea id="custom-text-ca" rows="7" placeholder="중국어 방송문(간체)을 여기에 붙여넣으세요..."></textarea>
@@ -821,6 +829,7 @@
   <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth-compat.js"></script>
+  <script src="/cam-import.js"></script>
   <script src="/reading-data.js"></script>
   <script src="/reading.js"></script>
   <script defer type="text/javascript" src="/main.js"></script>

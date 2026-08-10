@@ -1360,6 +1360,10 @@ function _withReading(html, lang) {
   try { return annotateReading(html, lang); } catch { return html; }
 }
 function _renderKoEnText(text, lang) {
+  // 독음 맵은 '독음 줄이 제거되기 전' 원문에서 만들어야 한다.
+  if (lang === 'ja' && typeof buildScriptYomiMap === 'function') {
+    try { buildScriptYomiMap(text); } catch {}
+  }
   text = _showReading ? _stripYomiLines(text, lang) : text;
   const hv = s => _withReading(escHtml(s).replace(/\[([^\]]+)\]/g, (match, inner) => {
     if (/^(General|수하물|필요|생략|군사)/.test(inner)) return match;
@@ -1370,6 +1374,7 @@ function _renderKoEnText(text, lang) {
   let tableRows = [];  // markdown pipe tables
   let taggedRows = []; // [TAG] content section lines
   let pendingTagRow = false; // 단독 태그 줄이 다음 본문 줄을 기다리는 중
+  let pendingInline = null;  // '생략 가능'/'필요 시' 배지가 본문을 기다리는 중
 
   const flushTable = () => {
     if (!tableRows.length) return;
@@ -1424,12 +1429,16 @@ function _renderKoEnText(text, lang) {
       flushTable();
       const tag = tagMatch ? tagMatch[1] : soloTagMatch[1];
       const content = tagMatch ? tagMatch[2] : '';
-      if (tag === '생략 가능') {
+      if (tag === '생략 가능' || tag === '필요 시') {
         flushTaggedRows();
-        html += `<div class="script-optional"><span class="script-section-badge">생략 가능</span>${content ? hv(content) : ''}</div>`;
-      } else if (tag === '필요 시') {
-        flushTaggedRows();
-        html += `<div class="script-conditional"><span class="script-section-badge">필요 시</span>${content ? hv(content) : ''}</div>`;
+        const cls = tag === '생략 가능' ? 'script-optional' : 'script-conditional';
+        if (content) {
+          html += `<div class="${cls}"><span class="script-section-badge">${tag}</span>${hv(content)}</div>`;
+        } else {
+          // 배지만 있는 줄 — 본문은 다음 줄에 온다. 지금 닫으면 배지만 덩그러니 남고
+          // 본문이 블록 밖으로 빠져 어느 구간이 '생략 가능'인지 알 수 없게 된다.
+          pendingInline = { cls, tag };
+        }
       } else {
         taggedRows.push({ tag, content });
         // 단독 태그 줄([10분 초과 지연 시] 등)은 본문이 다음 줄에 온다.
@@ -1440,6 +1449,12 @@ function _renderKoEnText(text, lang) {
     }
 
     // Regular text line
+    if (pendingInline) {
+      if (!tr) continue;
+      html += `<div class="${pendingInline.cls}"><span class="script-section-badge">${pendingInline.tag}</span>${hv(tr)}</div>`;
+      pendingInline = null;
+      continue;
+    }
     if (pendingTagRow) {
       if (!tr) continue;                       // 태그와 본문 사이 빈 줄은 건너뜀
       taggedRows[taggedRows.length - 1].content = tr;
@@ -1455,6 +1470,7 @@ function _renderKoEnText(text, lang) {
     }
   }
   pendingTagRow = false;
+  pendingInline = null;
 
   flushTable();
   flushTaggedRows();
@@ -2762,6 +2778,9 @@ function _renderStudyGuide(guide) {
 // 핵심 원칙: replace(/\//g) 가 이미 삽입된 </b>, </span> 안의 / 를 건드리지 않도록
 // ⟦word⟧ → @@PH0@@ 플레이스홀더로 격리 → / 치환 먼저 → PH 복원(마지막)
 function buildMasterScript(scriptText, guideData, langCode) {
+  if (langCode === 'ja' && typeof buildScriptYomiMap === 'function') {
+    try { buildScriptYomiMap(scriptText); } catch {}
+  }
   let text = _showReading ? _stripYomiLines(String(scriptText || ''), langCode) : String(scriptText || '');
 
   // 1단계: Firestore 데이터 HTML 태그 제거 후 기호 삽입 (순수 텍스트 유지)
@@ -5578,6 +5597,38 @@ function _downloadAdminUserListCsv() {
   URL.revokeObjectURL(url);
 }
 
+
+// ===== 교범 붙여넣기 변환 =====
+// 교범 PDF에서 복사한 텍스트를 앱 형식(독음 줄 + 원문 줄)으로 정리한다.
+// 원문을 바꾸지 않고 짝짓기·잡음 제거만 하며, 결과는 사용자가 확인 후 반영한다.
+function _openCamImport(lang) {
+  const langName = lang === 'ca' ? '중국어' : '일본어';
+  const ta = document.getElementById(`custom-text-${lang}`);
+  if (!ta) return;
+  const raw = prompt(
+    `교범 PDF에서 복사한 ${langName} 방송문을 붙여넣으세요.\n` +
+    `(머리말·페이지 번호가 섞여 있어도 자동으로 걸러냅니다)`, '');
+  if (raw === null || !raw.trim()) return;
+  if (typeof CamImport === 'undefined') { showToast('변환기를 불러오지 못했습니다', 3000); return; }
+
+  let r;
+  try { r = CamImport.convert(raw, lang); }
+  catch (e) { console.error('[교범 변환]', e); showToast('변환 실패: ' + e.message, 4000); return; }
+
+  if (!r.text.trim()) { showToast('변환할 내용을 찾지 못했습니다', 3000); return; }
+
+  const warn = r.warnings.length
+    ? `\n\n⚠️ 확인 필요 ${r.warnings.length}건:\n- ` + r.warnings.slice(0, 5).join('\n- ')
+    : '';
+  const ok = confirm(
+    `${r.blocks}개 구간을 변환했습니다.${warn}\n\n` +
+    `--- 미리보기 ---\n${r.text.slice(0, 400)}${r.text.length > 400 ? '\n...' : ''}\n\n` +
+    `입력창에 넣을까요? (기존 내용은 대체됩니다)`);
+  if (!ok) return;
+  ta.value = r.text;
+  showToast(`✅ ${r.blocks}개 구간 변환 완료` + (r.warnings.length ? ` · 확인 필요 ${r.warnings.length}건` : ''), 4000);
+}
+
 // ===== ADMIN: 접속 로그 조회 =====
 let _adminLogRows = [];
 
@@ -6491,6 +6542,11 @@ document.addEventListener('DOMContentLoaded', () => {
   _setupSidebarSearch();
 
   // 상세 패널 언어 탭
+  // 교범 붙여넣기 변환 버튼
+  document.querySelectorAll('.btn-cam-import').forEach(btn => {
+    btn.addEventListener('click', () => _openCamImport(btn.dataset.target));
+  });
+
   // 독음/병음 표시 토글
   const _rdBtn = $('btn-reading-toggle');
   if (_rdBtn) {
