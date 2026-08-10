@@ -192,8 +192,9 @@ function _rubyJa(s) {
   const flush = () => {
     if (!buf) return;
     const y = lookupYomi(buf);
-    if (y) out += '<ruby class="rb-ja">' + buf + '<rt>' + y + '</rt></ruby>';
-    else { window.READING_MISSING.ja.add(buf); out += '<span class="rb-missing">' + buf + '</span>'; }
+    const body = _showPronPoint ? markJaPoints(buf) : buf;
+    if (y) out += '<ruby class="rb-ja">' + body + '<rt>' + y + '</rt></ruby>';
+    else { window.READING_MISSING.ja.add(buf); out += '<span class="rb-missing">' + body + '</span>'; }
     buf = '';
   };
   for (const c of s) {
@@ -206,16 +207,132 @@ function _rubyJa(s) {
 
 // 중국어: 한자 한 글자마다 위에 병음
 function _rubyCa(s) {
+  const chars = [...s];
+  const py = chars.map(c => (_isHanziCh(c) && typeof CAM_CA_PY !== 'undefined') ? (CAM_CA_PY[c] || null) : null);
+  // 다음 한자의 성조를 알아야 변조 규칙을 적용할 수 있다.
+  const nextToneAt = (i) => {
+    for (let j = i + 1; j < chars.length; j++) {
+      if (!_isHanziCh(chars[j])) {
+        // 구두점을 만나면 끊어 읽으므로 변조가 일어나지 않는다.
+        if (/[，。！？；：、]/.test(chars[j])) return -1;
+        continue;
+      }
+      return py[j] ? toneOf(py[j]) : -1;
+    }
+    return -1;
+  };
+
   let out = '';
-  for (const c of s) {
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
     if (!_isHanziCh(c)) { out += c; continue; }
-    const p = (typeof CAM_CA_PY !== 'undefined') ? CAM_CA_PY[c] : null;
+    const p = py[i];
     if (!p) {
       window.READING_MISSING.ca.add(c);
       out += '<span class="rb-missing">' + c + '</span>';
       continue;
     }
-    out += '<ruby class="rb-ca"><rt>' + p + '</rt>' + c + '</ruby>';
+    if (_showPronPoint) {
+      const t = toneOf(p);
+      const d = toneDisplay(c, p, nextToneAt(i));
+      const cls = 'rb-ca tone-' + t + (d.changed ? ' tone-changed' : '') + (d.half4 ? ' tone-half4' : '');
+      out += '<ruby class="' + cls + '" title="' + d.name + '">'
+           + '<rt><span class="pp-tone">' + d.mark + '</span>' + p + '</rt>' + c + '</ruby>';
+    } else {
+      out += '<ruby class="rb-ca"><rt>' + p + '</rt>' + c + '</ruby>';
+    }
   }
   return out;
+}
+
+/* ===========================================================
+   발음 포인트 표시 — AI가 아니라 표기에서 직접 판별한다.
+   AI 생성물은 매번 달라지지만 이 규칙은 항상 같은 결과를 낸다.
+
+   일본어: 장음(ー·독음의 '-')·촉음(っ)·撥音(ん)
+   중국어: 병음 성조 → 화살표 (1성 →, 2성 ↗, 3성 ↘↗, 4성 ↘)
+   =========================================================== */
+
+let _showPronPoint = false;
+function setPronPoint(on) { _showPronPoint = !!on; }
+function getPronPoint() { return _showPronPoint; }
+
+// 성조 판별: 병음 음절에서 성조 부호를 찾아 1~4 반환 (없으면 0=경성)
+const _TONE_TABLE = {
+  1: 'āēīōūǖ', 2: 'áéíóúǘ', 3: 'ǎěǐǒǔǚ', 4: 'àèìòùǜ'
+};
+function toneOf(py) {
+  for (const t of [1, 2, 3, 4]) {
+    for (const ch of _TONE_TABLE[t]) if (py.includes(ch)) return t;
+  }
+  return 0;
+}
+const TONE_MARK = { 1: '→', 2: '↗', 3: '↘↗', 4: '↘', 0: '·' };
+const TONE_NAME = { 1: '1성', 2: '2성', 3: '3성', 4: '4성', 0: '경성' };
+
+// 일본어 한 덩어리에서 발음 포인트 구간을 표시용 HTML로 감싼다.
+function markJaPoints(kana, yomi) {
+  let out = '';
+  for (let i = 0; i < kana.length; i++) {
+    const c = kana[i], nx = kana[i + 1] || '';
+    if (c === 'っ' || c === 'ッ') {
+      out += '<span class="pp-soku" title="촉음 — 한 박 멈춤">' + c + '</span>';
+    } else if (c === 'ー') {
+      out += '<span class="pp-long" title="장음 — 두 박으로 끌기">' + c + '</span>';
+    } else if (c === 'ん' || c === 'ン') {
+      out += '<span class="pp-n" title="撥音 — 한 박 유지">' + c + '</span>';
+    } else if ((c === 'う' || c === 'お') && 'おこそとのほもよろごどぼぽょ'.includes(kana[i - 1] || '')) {
+      out += '<span class="pp-long" title="장음(おう) — 두 박으로 끌기">' + c + '</span>';
+    } else if (c === 'い' && 'えけせてねへめれげでべぺ'.includes(kana[i - 1] || '')) {
+      out += '<span class="pp-long" title="장음(えい) — 두 박으로 끌기">' + c + '</span>';
+    } else {
+      out += c;
+    }
+    void nx;
+  }
+  return out;
+}
+
+
+/* ── 성조 변화(变调) 규칙 ────────────────────────────────────────
+   중국어는 표기된 성조와 실제 발음되는 성조가 다른 경우가 있다.
+   비전공 학습자가 가장 많이 틀리는 지점이므로 화살표에 반영한다.
+
+   ① 3성 + 3성      → 앞 글자를 2성으로   예) 你好 nǐ hǎo → ní hǎo
+   ② 3성 + (1·2·4·경성) → 앞 글자는 반3성(내리기만)  예) 请坐 qǐng zuò
+   ③ 4성 + 4성      → 앞 글자는 반4성(짧고 덜 내림)  예) 再见 zài jiàn
+   ④ 一(yī)         → 4성 앞에서 2성(yí), 1·2·3성 앞에서 4성(yì)
+   ⑤ 不(bù)         → 4성 앞에서 2성(bú)
+   ※ ①④⑤는 실제 성조가 바뀌므로 반드시 지도해야 하고,
+     ②③은 성조 자체는 유지되나 길이·폭이 달라지는 현상이다.
+─────────────────────────────────────────────────────────────── */
+const TONE_MARK_HALF3 = '↘';    // 반3성 — 내리기만
+const TONE_MARK_HALF4 = '↘\u0323'; // 반4성 — 짧게 내림
+
+// 표시용 성조 정보 계산. { mark, name, changed }
+function toneDisplay(ch, py, nextTone) {
+  const t = toneOf(py);
+
+  // ④ 一
+  if (ch === '一') {
+    if (nextTone === 4) return { mark: TONE_MARK[2], name: '一: 4성 앞 → 2성(yí)', changed: true };
+    if (nextTone >= 1 && nextTone <= 3) return { mark: TONE_MARK[4], name: '一: 1·2·3성 앞 → 4성(yì)', changed: true };
+  }
+  // ⑤ 不
+  if (ch === '不' && nextTone === 4) {
+    return { mark: TONE_MARK[2], name: '不: 4성 앞 → 2성(bú)', changed: true };
+  }
+  // ① 3성 + 3성
+  if (t === 3 && nextTone === 3) {
+    return { mark: TONE_MARK[2], name: '3성+3성 → 앞을 2성으로', changed: true };
+  }
+  // ② 3성 + 그 밖 → 반3성
+  if (t === 3 && nextTone > 0 && nextTone !== 3) {
+    return { mark: TONE_MARK_HALF3, name: '반3성 — 내리기만(올리지 않음)', changed: false };
+  }
+  // ③ 4성 + 4성 → 앞은 반4성
+  if (t === 4 && nextTone === 4) {
+    return { mark: TONE_MARK[4], name: '4성+4성 — 앞은 짧고 덜 내림', changed: false, half4: true };
+  }
+  return { mark: TONE_MARK[t], name: TONE_NAME[t], changed: false };
 }

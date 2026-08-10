@@ -1973,7 +1973,7 @@ async function startRecording() {
   state.recordingStart = Date.now();
   state.stream = _stream;
 
-  $('record-title').textContent = `${state.currentScript.title} · ${{ ko:'한국어', en:'English' }[state.selectedLang]}`;
+  $('record-title').textContent = `${state.currentScript.title} · ${{ ja:'日本語', ca:'中文' }[state.selectedLang] || '日本語'}`;
   $('record-timer').textContent = '00:00';
   $('live-text').textContent = '말씀해 주세요...';
   renderScriptText(state.currentScript, state.selectedLang, $('script-peek-text'));
@@ -2115,7 +2115,10 @@ function setupSpeechRecognition(langCode) {
       e.results[i].isFinal ? (state.transcript += t + ' ') : (interim = t);
     }
     console.log('[STT] onresult 발생 — interim:', interim, '| final 누적길이:', state.transcript.length);
-    $('live-text').textContent = (state.transcript + interim).trim() || '말씀해 주세요...';
+    // 인식된 발화에도 독음/병음을 붙여 학습자가 즉시 대조할 수 있게 한다.
+    const _lt = (state.transcript + interim).trim();
+    if (_lt) $('live-text').innerHTML = _withReading(escHtml(_lt), state.selectedLang);
+    else $('live-text').textContent = '말씀해 주세요...';
   };
   recog.onerror = e => {
     console.warn('[STT] onerror 발생 —', e.error); // no-speech 포함 전부 기록 (진단용)
@@ -2208,15 +2211,16 @@ async function stopRecording() {
   await _releaseAudioSession();
 }
 
-// ===== 3단계 배점 (연습 도구 기준) =====
-// ratio=0 → 0점, ratio≥0.72 → 만점 (학습 동기 유지를 위해 관대하게)
+// ===== 3단계 배점 =====
+// 실제 평가(85점 PASS)를 대비하는 도구이므로 만점 문턱을 실측 기준에 맞춘다.
+// 과거 0.72에서 만점을 주던 설정은 점수를 부풀려 응시자가 준비 상태를 오판하게 했다.
 function tierScore(ratio, maxPt) {
   if (!ratio || ratio <= 0) return 0;
   ratio = Math.min(1, Math.max(0, ratio));
-  if (ratio >= 0.72) return maxPt;
+  if (ratio >= 0.85) return maxPt;
   if (ratio >= 0.42) {
-    if (maxPt === 10) return Math.round(6 + (ratio - 0.42) / 0.30 * 4);
-    if (maxPt === 5)  return Math.round(3 + (ratio - 0.42) / 0.30 * 2);
+    if (maxPt === 10) return Math.round(5 + (ratio - 0.42) / 0.43 * 5);
+    if (maxPt === 5)  return Math.round(2 + (ratio - 0.42) / 0.43 * 3);
   }
   if (ratio >= 0.20) {
     if (maxPt === 10) return Math.round(2 + (ratio - 0.20) / 0.22 * 4);
@@ -2393,7 +2397,10 @@ async function callGeminiGuide(scriptText, langCode) {
 
 [중국어 억양 원칙 — 반드시 준수]
 - 성조가 최우선이다. 강조를 위해 성조를 무시하고 음을 올리라고 지도하지 말 것.
-- 강조는 성조를 지킨 상태에서 '속도를 늦추고 또렷하게' 로 안내할 것.`
+- 강조는 성조를 지킨 상태에서 '속도를 늦추고 또렷하게' 로 안내할 것.
+- 4성이 연속되는 구간(各位·再见 등)은 앞 글자를 짧게 처리해야 자연스럽다.
+  기내방송은 4성 연속이 잦으므로 해당 구간이 있으면 반드시 짚어줄 것.
+- 3성 연속, 3성 뒤 다른 성조가 오는 구간의 변조도 함께 안내할 것.`
   };
 
   const prompt = `당신은 항공사 기내방송 전문 교관입니다.
@@ -3728,12 +3735,12 @@ function renderRadar(result) {
         {
           label: '내 점수(%)',
           data: myData,
-          backgroundColor: result.pass ? 'rgba(59,130,246,.18)' : 'rgba(239,68,68,.15)',
-          borderColor: result.pass ? '#3b82f6' : '#ef4444',
-          borderWidth: 2.5, pointBackgroundColor: result.pass ? '#3b82f6' : '#ef4444', pointRadius: 4
+          backgroundColor: 'rgba(123,30,58,.16)',
+          borderColor: '#7B1E3A',
+          borderWidth: 2.5, pointBackgroundColor: '#7B1E3A', pointRadius: 4
         },
         {
-          label: 'PASS 기준(75%)',
+          label: '권장 수준',
           data: [75,75,75,75],
           backgroundColor: 'rgba(16,185,129,.05)',
           borderColor: 'rgba(16,185,129,.55)',
@@ -3832,16 +3839,24 @@ function renderFeedback(result, transcript, lang, isAdmin) {
   };
   const CAT_TIPS = result.lang === 'ca' ? _TIPS_CA : _TIPS_JA;
 
-  /* ── 1. 종합 판정 배너 ── */
-  const isExcellent = result.total >= 95;
-  const overviewCls = isExcellent ? 'ov-excellent' : result.pass ? 'ov-pass' : 'ov-fail';
-  const overviewIcon = isExcellent ? '🏆' : result.pass ? '✅' : '❌';
-  const overviewLabel = isExcellent ? '최우수' : result.pass ? 'PASS' : 'FAIL';
-  const overviewMsg = isExcellent
-    ? '모든 항목 탁월 — 이 실력을 실전에서도 유지하세요!'
-    : result.pass
-    ? `PASS 기준(${PASS_SCORE}점) 통과. 아래 AI 분석으로 완성도를 더 높여보세요.`
-    : `PASS까지 ${PASS_SCORE - result.total}점 부족. 아래 카테고리를 집중 연습하세요.`;
+  /* ── 1. 연습 요약 배너 ──
+     점수·PASS/FAIL 은 표시하지 않는다. 훈련 도구의 결과가 실제 평가 결과처럼
+     오해되면 평가 문의·이의 제기로 이어지므로, '무엇을 다듬을지'만 안내한다.
+     (내부 점수는 피드백 강도 결정에만 쓰인다) */
+  const _catLabels = { fluency: '유창성', voice: '분위기·목소리',
+                       intonation: result.lang === 'ca' ? '성조·억양' : '억양',
+                       pronunciation: '발음' };
+  const _catRatio = Object.entries(cats).map(([k, v]) => [k, v.max ? v.score / v.max : 1]);
+  _catRatio.sort((a, b) => a[1] - b[1]);
+  const _weakest = _catRatio.filter(x => x[1] < 0.8).slice(0, 2).map(x => _catLabels[x[0]]);
+  const _allGood = _catRatio.every(x => x[1] >= 0.8);
+
+  const overviewCls = _allGood ? 'ov-pass' : 'ov-practice';
+  const overviewIcon = _allGood ? '🎯' : '🔍';
+  const overviewLabel = _allGood ? '전 항목 안정' : '집중 연습';
+  const overviewMsg = _allGood
+    ? '모든 항목이 고르게 안정적입니다. 이 감각을 반복해서 굳혀보세요.'
+    : `이번 연습에서 다듬을 부분: ${_weakest.join(' · ')} — 아래 상세 분석을 확인하세요.`;
 
   const noSpeech = (!transcript || transcript.length < 5)
     ? `<div class="fb-no-speech">⚠️ 음성이 인식되지 않았습니다 — Chrome 브라우저 + 마이크 허용 필요. 발음·완성도 점수가 0점 처리됩니다.</div>`
@@ -3852,7 +3867,6 @@ function renderFeedback(result, transcript, lang, isAdmin) {
   const overviewHTML = `
   <div class="fb-overview ${overviewCls}">
     <div class="fb-ov-left">
-      ${isAdmin ? `<div class="fb-ov-score">${result.total}</div>` : ''}
       <div class="fb-ov-badge">${overviewIcon} ${overviewLabel}</div>
     </div>
     <div class="fb-ov-right">
@@ -3910,7 +3924,7 @@ function renderFeedback(result, transcript, lang, isAdmin) {
           <div class="fb-gh-bar-wrap">
             <div class="fb-gh-bar" style="width:${pct}%;background:${cat.color}"></div>
           </div>
-          ${isAdmin ? `<span class="fb-gh-score">${cr.score}<span class="fb-gh-max">/${cat.max}</span></span>` : ''}
+          ${'' /* 항목별 점수는 표시하지 않는다. 숫자에 매몰되면 피드백 내용을 놓치게 된다. */}
           <span class="fb-gh-badge badge-${grade}">${gradeLabel}</span>
         </div>
       </div>
@@ -3925,7 +3939,7 @@ function renderTranscriptCompare(transcript, lang) {
   const preview = lang.text.split('\n').slice(0, 3).join(' ') + (lang.text.split('\n').length > 3 ? '…' : '');
   $('transcript-compare').innerHTML = `
     <div class="tc-row"><div class="tc-label">방송 원문</div><div class="tc-text">${escHtml(preview)}</div></div>
-    <div class="tc-row"><div class="tc-label">AI 인식</div><div class="tc-text recognized">${transcript ? escHtml(transcript) : '(AI 채점 결과 대기 중...)'}</div></div>`;
+    <div class="tc-row"><div class="tc-label">AI 인식</div><div class="tc-text recognized">${transcript ? _withReading(escHtml(transcript), state.selectedLang) : '(AI 채점 결과 대기 중...)'}</div></div>`;
 }
 
 // ===== TEXT HELPERS =====
@@ -4502,10 +4516,10 @@ async function callGeminiScoring(script, audioBlob, langCode, checkpoints) {
      - 글자 단위로 뚝뚝 끊어 읽는 낭독체면 감점
      - 한국어식 강세가 아닌 일본어 고저 악센트 흐름으로 말하는가
 
-분위기/목소리 ${maxVoice}점 (반드시 1점 이상 부여):
-  ① 자연스러운 톤(10): 음성에 어울리는 톤인가. 지나치게 높거나 낮으면 감점. 최소 5점 이상
-  ② 안정적인 발성(5): 음량 큼/작음, 비음, 아성, 갈라짐, 불안정 여부. 최소 3점 이상
-  ③ 친절한 분위기(5): 차가움·성의 부족 여부. 방송을 수행했다면 최소 2점 이상
+분위기/목소리 ${maxVoice}점:
+  ① 자연스러운 톤(10): 음성에 어울리는 톤인가. 지나치게 높거나 낮으면 감점
+  ② 안정적인 발성(5): 음량 큼/작음, 비음, 아성, 갈라짐, 불안정 여부
+  ③ 친절한 분위기(5): 차가움·성의 부족 여부. 무성의하게 읽었다면 1~2점
   ④ 과장·단조 지양(5): 과장된 연출 또는 단조로운 연출 모두 감점
 
 억양 ${maxInton}점:
@@ -4516,7 +4530,7 @@ async function callGeminiScoring(script, audioBlob, langCode, checkpoints) {
   ④ 어미·조사 처리(5): 짧게 끊음 / 길게 끎 / 불필요한 억양 사용 시 감점
      - 문말 です·ます가 한국어식으로 올라가면 감점
 
-발음 ${maxPron}점 (음성을 직접 듣고 실제 확인된 것만 채점):
+발음 ${maxPron}점 (음성을 직접 듣고 실제 확인된 것만 채점. 확인되지 않으면 점수를 주지 말 것):
   ① 장음(5): 생략 / 불필요한 장음 삽입 / 지나치게 긺·짧음
      - とうきょう는 4박, ありがとうございます의 とう 유지 여부
      - 장음 탈락은 의미가 달라지므로 반복되면 크게 감점
@@ -4546,10 +4560,10 @@ async function callGeminiScoring(script, audioBlob, langCode, checkpoints) {
      금지 표현: '더 빠르게', '속도를 높여' / 권장 표현: '천천히 성조를 살려서'
   ⑤ 문안 숙지(5): 버벅거림 주의, 잘못 읽음 주의
 
-분위기/목소리 ${maxVoice}점 (반드시 1점 이상 부여):
-  ① 친근한 분위기(10): 성의 부족·차가움 여부. 승객에게 말하는 온기가 있는가. 최소 5점 이상
-  ② 음량·발성(5): 음량 큼/작음, 힘없는 발성, 목소리 갈라짐, 비음. 최소 3점 이상
-  ③ 자연스러운 톤(10): 음성에 어울리는 톤인가. 지나치게 높거나 낮으면 감점. 최소 5점 이상
+분위기/목소리 ${maxVoice}점:
+  ① 친근한 분위기(10): 성의 부족·차가움 여부. 무성의하게 읽었다면 1~3점
+  ② 음량·발성(5): 음량 큼/작음, 힘없는 발성, 목소리 갈라짐, 비음
+  ③ 자연스러운 톤(10): 음성에 어울리는 톤인가. 지나치게 높거나 낮으면 감점
      - 성조를 지키려다 톤이 과장·경직되는 경우도 감점
 
 성조/억양 ${maxInton}점:
@@ -4561,13 +4575,22 @@ async function callGeminiScoring(script, audioBlob, langCode, checkpoints) {
      - 3성(降昇, ǎ) 예) 旅 lǚ, 好 hǎo — 내렸다 올리는가
      - 2성과 3성이 구분되지 않으면 감점
   ③ 성조 변화규칙(5): 변화규칙 준수 및 성조 간 자연스러운 연결
-     - 3성+3성 → 앞 글자 2성 예) 你好 ní hǎo
-     - 不(bù)·一(yī)의 성조 변화, 경성(轻声) 처리 예) 你们, 我们, 先生
+     [반드시 아래 규칙대로 확인할 것]
+     ⓐ 3성+3성 → 앞 글자를 2성으로 예) 你好 nǐ hǎo → ní hǎo
+        표기대로 3성을 두 번 읽으면 감점.
+     ⓑ 3성+(1·2·4성·경성) → 앞 글자는 반3성(내리기만 하고 올리지 않음)
+        예) 请坐 qǐng zuò, 旅客 lǚ kè. 끝을 올리면 부자연스럽다.
+     ⓒ 4성+4성 → 앞 4성은 짧고 덜 내림 예) 再见 zàijiàn, 各位 gèwèi
+        둘 다 끝까지 내리면 뚝뚝 끊겨 딱딱하게 들린다. 기내방송에 특히 잦은 구간이다.
+     ⓓ 一(yī) → 4성 앞에서 2성(yí) 예) 一次 yícì / 1·2·3성 앞에서 4성(yì) 예) 一般 yìbān
+     ⓔ 不(bù) → 4성 앞에서 2성(bú) 예) 不要 búyào
+     ⓕ 경성(轻声) — 짧고 약하게 예) 你们, 我们, 先生, 的
+     ※ 구두점(，。)으로 끊어 읽는 자리에서는 변조가 일어나지 않는다.
   ④ 중국어다운 억양(10): 중국어 특성을 살린 억양인가
      - 한국어식 억양(모든 글자 같은 높이의 평탄 읽기)이면 크게 감점
      - 성조를 지키면서도 문장 전체 흐름이 자연스러운가
 
-발음 ${maxPron}점 (음성을 직접 듣고 실제 확인된 것만 채점):
+발음 ${maxPron}점 (음성을 직접 듣고 실제 확인된 것만 채점. 확인되지 않으면 점수를 주지 말 것):
   ① 권설음·설치음(5): 혀 위치 구분
      - 권설음 zh/ch/sh/r 예) 中 zhōng, 乘 chéng, 上 shàng
      - 설치음 z/c/s 예) 座 zuò, 次 cì, 三 sān
@@ -4727,6 +4750,25 @@ STT 인식 결과와 대조해 matchRate = 인식된 핵심단어 수 / 전체 �
 4. 관대한 채점 절대 금지
 5. 발음이 명확하지 않으면 낮은 점수
 
+[점수 기준선 - 반드시 이 척도로 채점할 것]
+이 앱은 실제 자격 평가(85점 PASS)를 대비하는 훈련 도구다.
+후하게 준 점수는 응시자가 준비되지 않은 채 평가에 들어가게 만들어 오히려 해가 된다.
+아래 기준을 그대로 적용하고, 격려를 이유로 점수를 올리지 말 것.
+
+  90~100 : 교관 모델 음성에 근접. 장음/촉음(일) 또는 성조(중)가 거의 정확하고 방송 톤이 자연스러움
+  85~89  : 실제 평가 통과 수준. 사소한 오류는 있으나 의미 전달과 방송 품질에 문제 없음
+  70~84  : 읽어내기는 하나 발음/억양 오류가 반복됨. 실제 평가라면 불합격
+  50~69  : 원문을 따라 읽는 수준. 장음이나 성조가 자주 무너지고 낭독체가 뚜렷함
+  30~49  : 상당 부분이 부정확하거나 뭉개져 승객에게 의미 전달이 어려움
+  0~29   : 방송이라 보기 어려움. 미완주, 극심한 오류, 무성의한 발화
+
+[중요]
+- 비전공자의 첫 시도는 대개 45~70점대에 위치한다. 이 구간을 80점대로 올리지 말 것.
+- 무성의하게 읽었거나 성의가 느껴지지 않으면 분위기/목소리를 실제로 낮게 줄 것.
+- 여러 항목이 부족하면 총점도 그에 맞게 낮아야 한다. 항목은 낮은데 총점만 높은 모순 금지.
+- encouragement 는 점수와 모순되지 않아야 한다.
+  60점대에 '잘하셨어요' 같은 표현은 금지. 무엇을 고치면 오를지 짚어줄 것.
+
 ${criteria}
 ${cpText}
 원문:
@@ -4775,7 +4817,7 @@ ${script}`;
   "missedKeywords": ["누락된 핵심 키워드 (실제 누락만)"],
   "nextFocus": "이번 연습에서 가장 먼저 개선할 1가지와 그 이유 (예: '억양 — 문장 끝이 단조롭게 올라가서 승객에게 어색하게 들립니다')",
   "practiceMethod": "nextFocus를 개선하기 위한 단계별 연습 방법 (3줄 이내, 내일 당장 따라할 수 있도록 구체적으로)",
-  "encouragement": "이 연습 수준에 맞는 구체적이고 따뜻한 응원 메시지 1문장 (막연한 격려 말고, 이 연습에서 보인 노력을 언급)"
+  "encouragement": "점수 수준에 맞는 1문장. 85점 이상이면 격려, 84점 이하면 무엇을 고치면 통과선에 닿는지 구체적으로. 실력과 어긋나는 칭찬 금지"
 }
 
 중요: atmosphere(분위기·목소리) score는 반드시 1 이상의 정수를 반환하세요.
@@ -4901,7 +4943,8 @@ function renderAiResult(ai, isAdmin) {
   const score = typeof ai.score === 'number' ? ai.score : 0;
   const grade = ai.grade || '미취득';
   const gradeColor = grade === 'A' ? '#16a34a' : grade === 'B' ? '#2563eb' : grade === 'C' ? '#d97706' : '#dc2626';
-  const emojiGrade = score >= 85 ? '✨ 잘하셨어요!' : score >= 70 ? '👍 계속 연습해요' : '💪 더 연습이 필요해요';
+  // 합격/불합격을 연상시키는 표현을 쓰지 않는다. 연습 상태만 나타낸다.
+  const emojiGrade = score >= 85 ? '🎯 안정적인 연습' : score >= 70 ? '🔍 다듬는 중' : '📌 기초 다지기';
   const maxScores = { fluency: 30, atmosphere: 25, intonation: 25, pronunciation: 20 };
   const catMeta = {
     fluency:       { name: '유창성',       icon: '💨', max: maxScores.fluency },
@@ -4931,7 +4974,7 @@ function renderAiResult(ai, isAdmin) {
   const gradeHeaderHtml = `
     <div class="ai-grade-header">
       <span class="ai-grade-badge-new" style="background:${gradeColor}">${emojiGrade}</span>
-      ${isAdmin ? `<span class="ai-score-chip">${score}점</span>` : ''}
+
     </div>`;
 
   // 카테고리 카드 빌더 (헬퍼)
@@ -6577,6 +6620,30 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === $('cam-import-modal')) _closeCamImport();
   });
 
+  // 발음 포인트 토글 (장음·촉음 / 성조)
+  const _ppBtn = $('btn-pron-toggle');
+  if (_ppBtn) {
+    let _pp = localStorage.getItem('jaca_pron_point') === '1';
+    if (typeof setPronPoint === 'function') setPronPoint(_pp);
+    const _syncPp = () => {
+      _ppBtn.classList.toggle('active', _pp);
+      const lb = $('pron-toggle-label');
+      if (lb) lb.textContent = _detailLang === 'ca'
+        ? (_pp ? '성조 표시 ON' : '성조 표시')
+        : (_pp ? '장음·촉음 ON' : '장음·촉음');
+    };
+    _syncPp();
+    _ppBtn.addEventListener('click', () => {
+      _pp = !_pp;
+      localStorage.setItem('jaca_pron_point', _pp ? '1' : '0');
+      if (typeof setPronPoint === 'function') setPronPoint(_pp);
+      _syncPp();
+      const s = state.currentScript || _lastDetailScript;
+      if (s) _renderDetailContent(s, _detailLang);
+    });
+    window._syncPronBtn = _syncPp;
+  }
+
   // 독음/병음 표시 토글
   const _rdBtn = $('btn-reading-toggle');
   if (_rdBtn) {
@@ -6607,6 +6674,7 @@ document.addEventListener('DOMContentLoaded', () => {
       $('detail-lang-tabs').querySelectorAll('.detail-lang-tab').forEach(t => t.classList.toggle('active', t.dataset.lang===_detailLang));
       _renderDetailContent(s, _detailLang);
       if (window._syncReadingBtn) window._syncReadingBtn();
+      if (window._syncPronBtn) window._syncPronBtn();
     });
   });
 
