@@ -5600,33 +5600,56 @@ function _downloadAdminUserListCsv() {
 
 // ===== 교범 붙여넣기 변환 =====
 // 교범 PDF에서 복사한 텍스트를 앱 형식(독음 줄 + 원문 줄)으로 정리한다.
-// 원문을 바꾸지 않고 짝짓기·잡음 제거만 하며, 결과는 사용자가 확인 후 반영한다.
-function _openCamImport(lang) {
-  const langName = lang === 'ca' ? '중국어' : '일본어';
-  const ta = document.getElementById(`custom-text-${lang}`);
-  if (!ta) return;
-  const raw = prompt(
-    `교범 PDF에서 복사한 ${langName} 방송문을 붙여넣으세요.\n` +
-    `(머리말·페이지 번호가 섞여 있어도 자동으로 걸러냅니다)`, '');
-  if (raw === null || !raw.trim()) return;
-  if (typeof CamImport === 'undefined') { showToast('변환기를 불러오지 못했습니다', 3000); return; }
+// 원문을 바꾸지 않고 짝짓기·잡음 제거만 하며, 결과를 사용자가 확인·수정 후 반영한다.
+let _camImportLang = 'ja';
 
+function _openCamImport(lang) {
+  _camImportLang = lang;
+  $('cam-import-lang').textContent = lang === 'ca' ? '중국어(中文)로 변환' : '일본어(日本語)로 변환';
+  $('cam-import-input').value = '';
+  $('cam-import-output').value = '';
+  $('cam-import-result').classList.add('hidden');
+  $('cam-import-warn').classList.add('hidden');
+  $('cam-import-apply').disabled = true;
+  $('cam-import-modal').classList.remove('hidden');
+  setTimeout(() => $('cam-import-input').focus(), 50);
+}
+function _closeCamImport() { $('cam-import-modal').classList.add('hidden'); }
+
+function _runCamImport() {
+  const raw = $('cam-import-input').value;
+  if (!raw.trim()) { showToast('붙여넣은 내용이 없습니다', 2500); return; }
+  if (typeof CamImport === 'undefined') { showToast('변환기를 불러오지 못했습니다', 3000); return; }
   let r;
-  try { r = CamImport.convert(raw, lang); }
+  try { r = CamImport.convert(raw, _camImportLang); }
   catch (e) { console.error('[교범 변환]', e); showToast('변환 실패: ' + e.message, 4000); return; }
 
-  if (!r.text.trim()) { showToast('변환할 내용을 찾지 못했습니다', 3000); return; }
+  if (!r.text.trim()) { showToast('변환할 방송문을 찾지 못했습니다', 3000); return; }
 
-  const warn = r.warnings.length
-    ? `\n\n⚠️ 확인 필요 ${r.warnings.length}건:\n- ` + r.warnings.slice(0, 5).join('\n- ')
-    : '';
-  const ok = confirm(
-    `${r.blocks}개 구간을 변환했습니다.${warn}\n\n` +
-    `--- 미리보기 ---\n${r.text.slice(0, 400)}${r.text.length > 400 ? '\n...' : ''}\n\n` +
-    `입력창에 넣을까요? (기존 내용은 대체됩니다)`);
-  if (!ok) return;
-  ta.value = r.text;
-  showToast(`✅ ${r.blocks}개 구간 변환 완료` + (r.warnings.length ? ` · 확인 필요 ${r.warnings.length}건` : ''), 4000);
+  $('cam-import-output').value = r.text;
+  $('cam-import-result').classList.remove('hidden');
+  $('cam-import-apply').disabled = false;
+
+  const w = $('cam-import-warn');
+  if (r.warnings.length) {
+    w.innerHTML = `⚠️ <b>확인 필요 ${r.warnings.length}건</b> — 독음과 원문의 개수가 맞지 않는 구간입니다.` +
+      `<ul>${r.warnings.slice(0, 6).map(x => `<li>${escHtml(x)}</li>`).join('')}</ul>`;
+    w.classList.remove('hidden');
+  } else {
+    w.classList.add('hidden');
+  }
+  showToast(`${r.blocks}개 구간 변환 완료`, 2500);
+}
+
+function _applyCamImport() {
+  const ta = document.getElementById(`custom-text-${_camImportLang}`);
+  if (!ta) return;
+  const out = $('cam-import-output').value;
+  if (!out.trim()) return;
+  if (ta.value.trim() && !confirm('입력창의 기존 내용이 대체됩니다. 계속할까요?')) return;
+  ta.value = out;
+  _closeCamImport();
+  showToast('✅ 입력창에 반영했습니다', 3000);
 }
 
 // ===== ADMIN: 접속 로그 조회 =====
@@ -6542,9 +6565,16 @@ document.addEventListener('DOMContentLoaded', () => {
   _setupSidebarSearch();
 
   // 상세 패널 언어 탭
-  // 교범 붙여넣기 변환 버튼
+  // 교범 붙여넣기 변환
   document.querySelectorAll('.btn-cam-import').forEach(btn => {
     btn.addEventListener('click', () => _openCamImport(btn.dataset.target));
+  });
+  $('cam-import-close').addEventListener('click', _closeCamImport);
+  $('cam-import-cancel').addEventListener('click', _closeCamImport);
+  $('cam-import-run').addEventListener('click', _runCamImport);
+  $('cam-import-apply').addEventListener('click', _applyCamImport);
+  $('cam-import-modal').addEventListener('click', e => {
+    if (e.target === $('cam-import-modal')) _closeCamImport();
   });
 
   // 독음/병음 표시 토글

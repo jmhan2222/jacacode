@@ -829,6 +829,39 @@
   <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth-compat.js"></script>
+
+  <!-- 교범 붙여넣기 변환 모달 -->
+  <div id="cam-import-modal" class="modal-overlay hidden">
+    <div class="modal-box cam-modal">
+      <div class="modal-header">
+        <div class="modal-title">📄 교범 붙여넣기 변환</div>
+        <button class="modal-close" id="cam-import-close">✕</button>
+      </div>
+      <div class="modal-body cam-modal-body">
+        <p class="cam-step">
+          <b>1.</b> 교범 PDF에서 방송문 부분을 드래그해 복사(Ctrl+C)한 뒤,
+          아래 칸에 붙여넣으세요(Ctrl+V). 머리말·페이지 번호가 섞여 있어도 됩니다.
+        </p>
+        <textarea id="cam-import-input" rows="9"
+          placeholder="여기에 붙여넣으세요&#10;&#10;みなさま&#10;미나사마&#10;、[おはようございます&#10;오하요-고자이마스&#10;..."></textarea>
+        <div class="cam-actions">
+          <button type="button" class="btn-primary btn-cam-convert" id="cam-import-run">변환하기 →</button>
+          <span class="cam-lang-label" id="cam-import-lang"></span>
+        </div>
+        <div id="cam-import-result" class="cam-result hidden">
+          <p class="cam-step"><b>2.</b> 변환 결과를 확인하세요. 이 칸에서 바로 수정할 수 있습니다.</p>
+          <div id="cam-import-warn" class="cam-warn hidden"></div>
+          <textarea id="cam-import-output" rows="9"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div style="flex:1"></div>
+        <button class="btn-icon" id="cam-import-cancel">취소</button>
+        <button class="btn-primary" id="cam-import-apply" disabled>입력창에 넣기</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/cam-import.js"></script>
   <script src="/reading-data.js"></script>
   <script src="/reading.js"></script>
