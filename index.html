@@ -734,6 +734,7 @@
             <option value="recent">최근 접속순</option>
             <option value="inactive">미접속자 먼저</option>
           </select>
+          <button class="btn-icon" id="btn-admin-user-sync-logs" style="color:#003479;border-color:#003479" title="과거 accessLogs 기록을 읽어 사번별 접속일수를 자동 채워넣습니다">🔄 접속일수 소급 동기화</button>
           <button class="btn-icon" id="btn-admin-user-download">📥 목록 다운로드</button>
           <button class="btn-icon" id="btn-admin-user-delete-all" style="color:var(--color-fail);border-color:var(--color-fail)">🗑 전체 삭제</button>
         </div>
@@ -747,12 +748,18 @@
 
       <!-- 접속 로그 조회 섹션 -->
       <section class="admin-section">
-        <div class="admin-section-title">📊 접속 로그 조회</div>
+        <div class="admin-section-title">📊 접속 로그 및 연습·평가 통계</div>
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px">
+          사번별 접속 일수, 누적 연습(낭독) 시간, AI 평가 횟수를 기간별로 확인하고 엑셀(CSV)로 다운로드할 수 있습니다.
+        </div>
         <div class="admin-row-btns">
           <select id="admin-log-period" class="admin-input">
             <option value="today">오늘</option>
             <option value="7">최근 7일</option>
             <option value="30" selected>최근 30일</option>
+            <option value="90">최근 90일 (분기)</option>
+            <option value="year">올해 전체 (연간 누적 통계)</option>
+            <option value="365">최근 1년 (365일 상세로그)</option>
           </select>
           <button class="btn-primary" id="btn-admin-log-load">조회</button>
           <button class="btn-icon" id="btn-admin-log-csv">⬇ CSV 다운로드</button>

@@ -127,7 +127,7 @@ console.log('[Login] login.js 로드됨');
         }
 
         if (doc.data().password !== pw) {
-          err.textContent = '비밀번호가 올바르지 않습니다.';
+          err.innerHTML = '비밀번호가 올바르지 않습니다.<br><span style="font-size:11px;color:#aaa;line-height:1.5;display:inline-block;margin-top:4px;">초기 비밀번호: Jeju + 사번 앞 4자리 (예: Jeju1603)<br>비밀번호 분실 시 관리자에게 초기화를 요청하세요.</span>';
           btn.textContent = '로그인'; btn.disabled = false;
           return;
         }
