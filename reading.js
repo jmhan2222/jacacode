@@ -123,6 +123,7 @@ function buildScriptYomiMap(rawText) {
     }
   }
   _SCRIPT_YOMI = map;
+  for (const k in _RD_PART_CACHE) delete _RD_PART_CACHE[k];
   return Object.keys(map).length;
 }
 
@@ -152,7 +153,51 @@ function lookupYomi(token) {
   // 마지막 수단: 사전 항목들의 조합으로 분해 (교범과 띄어쓰기가 다른 경우)
   // 예) 'また、でんしきき' → 'また' + 'でんしきき'
   const combo = _splitByDict(n);
-  return combo;
+  return combo || _partialYomi(token);
+}
+
+/* ── 문절 일부 독음 ──────────────────────────────────────────────
+   AI 학습가이드가 끊어읽기 기호(∙ /)를 문절 '중간'에 넣으면
+   'ゆきで∙ございます' 처럼 덩어리가 쪼개져 사전 조회가 실패한다.
+   쪼개진 조각이 원래 문절의 일부라면, 원래 문절의 독음에서 그 부분만 잘라 쓴다.
+   자르는 기준: 가나 1자 = 독음 1음절. 단 요음·촉음·ん은 앞 음절에 붙으므로 0으로 센다.
+   이 기준이 원래 문절에서 정확히 맞아떨어질 때만 사용한다(어긋나면 잘라내지 않음).
+─────────────────────────────────────────────────────────────── */
+const _RD_ZERO_W = 'ゃゅょャュョっッんンぁぃぅぇぉァィゥェォ';
+function _kanaWeight(s) {
+  let n = 0;
+  for (const c of s) if (_isKanaCh(c) && !_RD_ZERO_W.includes(c)) n++;
+  return n;
+}
+function _yomiUnits(y) {
+  return [...String(y || '')].filter(c => /[가-힣]/.test(c) || c === '-');
+}
+const _RD_PART_CACHE = {};
+function _partialYomi(token) {
+  const chunk = _kanaKey(token);
+  if (!chunk) return null;
+  if (chunk in _RD_PART_CACHE) return _RD_PART_CACHE[chunk];
+  const w = _kanaWeight(chunk);
+  let found = null;
+  const tryDict = (dict, minLen) => {
+    if (found || !dict || chunk.length < minLen) return;
+    for (const key of Object.keys(dict)) {
+      const k = _kanaKey(key);
+      const pos = k.indexOf(chunk);
+      if (pos < 0 || k === chunk) continue;
+      const units = _yomiUnits(dict[key]);
+      if (units.length !== _kanaWeight(k)) continue;      // 1:1 대응이 깨진 문절은 쓰지 않음
+      const before = _kanaWeight(k.slice(0, pos));
+      const part = units.slice(before, before + w).join('');
+      if (part) { found = part; return; }
+    }
+  };
+  if (w > 0) {
+    tryDict(_SCRIPT_YOMI, 1);                                 // 현재 방송문 우선
+    tryDict(typeof CAM_JA_YOMI !== 'undefined' ? CAM_JA_YOMI : null, 2);
+  }
+  _RD_PART_CACHE[chunk] = found;
+  return found;
 }
 
 // 문자열을 사전 항목의 연속으로 분해한다. 최장 일치 우선, 실패 시 null.

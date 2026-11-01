@@ -2801,24 +2801,6 @@ ruby.rb-ca rt {
 .sg-master-script ruby { white-space: nowrap; }
 .script-text-rendered p, .sg-master-script { word-break: keep-all; overflow-wrap: break-word; }
 
-/* 독음 토글 버튼 */
-.btn-reading-toggle {
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-right: 8px;
-  transition: all .15s;
-}
-.btn-reading-toggle.active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: #fff;
-}
 /* 교범에 독음/병음이 없는 토큰 — 교관 확인 필요 표시 */
 .rb-missing {
   border-bottom: 1px dotted var(--color-warning);
@@ -2952,3 +2934,4 @@ ruby.rb-ca.tone-changed {
   border-radius: 3px;
 }
 ruby.rb-ca.tone-half4 rt { opacity: .82; }
+

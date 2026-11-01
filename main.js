@@ -1568,10 +1568,13 @@ function _stripYomiLines(text, lang) {
   return out.join('\n');
 }
 
-// 독음/병음 표시 여부 (사용자 토글, localStorage 유지)
-let _showReading = (localStorage.getItem('jaca_show_reading') ?? '1') === '1';
+// 독음(일본어)·병음(중국어)은 항상 표시한다.
+// 교범 자체가 독음을 병기하므로 앱도 같은 형태로 보여주는 것이 기준이다.
+// 과거의 ON/OFF 는 OFF 일 때 데이터 속 독음 줄이 그대로 드러나 일본어·한글이 섞여 보였고,
+// 화면마다 표시가 달라지는 문제가 있어 폐지했다.
+const _showReading = true;
 function _withReading(html, lang) {
-  if (!_showReading || typeof annotateReading !== 'function') return html;
+  if (typeof annotateReading !== 'function') return html;
   try { return annotateReading(html, lang); } catch { return html; }
 }
 function _renderKoEnText(text, lang) {
@@ -2006,6 +2009,7 @@ function _renderDetailLangTabs(s) {
 
 function _renderDetailContent(s, lang) {
   _lastDetailScript = s;
+  if (window._syncPronBtn) window._syncPronBtn();
   const langData = s.langs[lang];
   if (!langData) return;
 
@@ -7095,26 +7099,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window._syncPronBtn = _syncPp;
   }
 
-  // 독음/병음 표시 토글
-  const _rdBtn = $('btn-reading-toggle');
-  if (_rdBtn) {
-    const _syncRd = () => {
-      _rdBtn.classList.toggle('active', _showReading);
-      const lb = $('reading-toggle-label');
-      if (lb) lb.textContent = _showReading
-        ? (_detailLang === 'ca' ? '병음 ON' : '독음 ON')
-        : (_detailLang === 'ca' ? '병음 OFF' : '독음 OFF');
-    };
-    _syncRd();
-    _rdBtn.addEventListener('click', () => {
-      _showReading = !_showReading;
-      localStorage.setItem('jaca_show_reading', _showReading ? '1' : '0');
-      _syncRd();
-      const s = state.currentScript || _lastDetailScript;
-      if (s) _renderDetailContent(s, _detailLang);
-    });
-    window._syncReadingBtn = _syncRd;
-  }
 
   $('detail-lang-tabs').querySelectorAll('.detail-lang-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -7124,7 +7108,6 @@ document.addEventListener('DOMContentLoaded', () => {
       _detailLang = tab.dataset.lang;
       $('detail-lang-tabs').querySelectorAll('.detail-lang-tab').forEach(t => t.classList.toggle('active', t.dataset.lang===_detailLang));
       _renderDetailContent(s, _detailLang);
-      if (window._syncReadingBtn) window._syncReadingBtn();
       if (window._syncPronBtn) window._syncPronBtn();
     });
   });
