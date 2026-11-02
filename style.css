@@ -2779,9 +2779,9 @@ ruby.rb-ca {
   margin: 0 4px;
 }
 ruby.rb-ca rt {
-  font-size: 0.58em;
+  font-size: 0.74em;          /* 0.58em 은 휴대폰에서 읽기 어려워 키움 */
   color: var(--color-primary-light);
-  font-weight: 500;
+  font-weight: 600;
   user-select: none;
 }
 /* 루비가 붙으면 줄 간격 확보 */
@@ -2949,13 +2949,17 @@ svg.pitch-overlay polyline {
 svg.pitch-overlay polyline.pl-long { stroke-width: 5.5; stroke-linecap: butt; }   /* 장음: 두 박 끌기 */
 svg.pitch-overlay polyline.pl-neu  { stroke-dasharray: 3 3; opacity: .75; }      /* 경성: 약하고 짧게 */
 svg.pitch-overlay circle.pl-nucleus { fill: #B3261E; }                           /* 악센트 핵 */
-/* 선이 들어갈 자리 확보 */
-body.pp-on .script-text-rendered p,
-body.pp-on .script-text-rendered td,
-body.pp-on .break-script-line,
-body.pp-on .tc-text { line-height: 3.9 !important; }
+/* 선이 들어갈 자리 확보 — 루비가 들어 있는 모든 줄에 적용한다.
+   본문 문단뿐 아니라 구간 표(General 등)·카드·핵심 포인트 통합 방송문까지 포함.
+   통합 방송문은 인라인 style 로 line-height 를 지정하므로 !important 로 덮는다. */
+body.pp-on :is(p, td, li, .script-section-card > span, .break-script-line, .tc-text, #live-text):has(ruby, .rb-missing) {
+  line-height: 3.9 !important;
+}
 /* 중국어는 병음 위에 성조 곡선이 한 층 더 올라가므로 줄 간격을 더 둔다 */
-body.pp-on p:has(ruby.rb-ca),
-body.pp-on td:has(ruby.rb-ca),
-body.pp-on .break-script-line:has(ruby.rb-ca),
-body.pp-on .tc-text:has(ruby.rb-ca) { line-height: 5 !important; }
+body.pp-on :is(p, td, li, .script-section-card > span, .break-script-line, .tc-text, #live-text):has(ruby.rb-ca) {
+  line-height: 5 !important;
+}
+/* 칸 밖으로 나간 선이 잘려 세로 막대처럼 보이지 않도록 */
+body.pp-on .script-section-card,
+body.pp-on .script-section-table,
+body.pp-on .script-section-table tr { overflow: visible !important; }
