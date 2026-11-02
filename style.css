@@ -2900,8 +2900,9 @@ ruby.rb-ca rt {
 
 /* 일본어 — 장음/촉음/撥音 */
 .pp-long {
+  /* 밑줄은 아래쪽 독음과 겹치므로 쓰지 않는다 — 색과 옅은 바탕으로만 표시 */
   color: #B3261E; font-weight: 700;
-  border-bottom: 2px solid #B3261E; padding-bottom: 1px;
+  background: rgba(179,38,30,.09); border-radius: 3px; padding: 0 1px;
 }
 .pp-soku {
   color: #1B6B45; font-weight: 700;
@@ -2935,3 +2936,26 @@ ruby.rb-ca.tone-changed {
 }
 ruby.rb-ca.tone-half4 rt { opacity: .82; }
 
+
+/* ===== 높낮이 선 (발음 포인트) ===== */
+svg.pitch-overlay {
+  position: absolute; left: 0; top: 0;
+  pointer-events: none; overflow: visible; z-index: 1;
+}
+svg.pitch-overlay polyline {
+  fill: none; stroke: #B3261E; stroke-width: 2.4;
+  stroke-linejoin: round; stroke-linecap: round;
+}
+svg.pitch-overlay polyline.pl-long { stroke-width: 5.5; stroke-linecap: butt; }   /* 장음: 두 박 끌기 */
+svg.pitch-overlay polyline.pl-neu  { stroke-dasharray: 3 3; opacity: .75; }      /* 경성: 약하고 짧게 */
+svg.pitch-overlay circle.pl-nucleus { fill: #B3261E; }                           /* 악센트 핵 */
+/* 선이 들어갈 자리 확보 */
+body.pp-on .script-text-rendered p,
+body.pp-on .script-text-rendered td,
+body.pp-on .break-script-line,
+body.pp-on .tc-text { line-height: 3.9 !important; }
+/* 중국어는 병음 위에 성조 곡선이 한 층 더 올라가므로 줄 간격을 더 둔다 */
+body.pp-on p:has(ruby.rb-ca),
+body.pp-on td:has(ruby.rb-ca),
+body.pp-on .break-script-line:has(ruby.rb-ca),
+body.pp-on .tc-text:has(ruby.rb-ca) { line-height: 5 !important; }

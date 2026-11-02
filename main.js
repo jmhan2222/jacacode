@@ -7152,13 +7152,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const _ppBtn = $('btn-pron-toggle');
   if (_ppBtn) {
     let _pp = localStorage.getItem('jaca_pron_point') === '1';
+    // 일본어 악센트 선은 교관 검수 전까지 관리자 화면에서만 미리 보인다
+    window.JA_ACCENT_PREVIEW = _isAdminSession();
     if (typeof setPronPoint === 'function') setPronPoint(_pp);
     const _syncPp = () => {
       _ppBtn.classList.toggle('active', _pp);
       const lb = $('pron-toggle-label');
       if (lb) lb.textContent = _detailLang === 'ca'
-        ? (_pp ? '성조 표시 ON' : '성조 표시')
+        ? (_pp ? '성조 곡선 ON' : '성조 곡선')
         : (_pp ? '장음·촉음 ON' : '장음·촉음');
+      // 관리자에게만 보이는 일본어 악센트 선이 검수용 초안임을 알린다
+      _ppBtn.title = (_detailLang !== 'ca' && window.JA_ACCENT_PREVIEW &&
+                      !(typeof JA_ACCENT_REVIEWED !== 'undefined' && JA_ACCENT_REVIEWED))
+        ? '악센트 선은 자동 분석 초안입니다 (관리자에게만 표시 · 교관 검수 후 학습자에게 공개)'
+        : '장음·촉음(일본어) / 성조 곡선(중국어) 표시';
     };
     _syncPp();
     _ppBtn.addEventListener('click', () => {

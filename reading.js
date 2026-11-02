@@ -237,7 +237,7 @@ function _rubyJa(s) {
   const flush = () => {
     if (!buf) return;
     const y = lookupYomi(buf);
-    const body = _showPronPoint ? markJaPoints(buf) : buf;
+    const body = _showPronPoint ? _jaPronBody(buf) : buf;
     if (y) out += '<ruby class="rb-ja">' + body + '<rt>' + y + '</rt></ruby>';
     else { window.READING_MISSING.ja.add(buf); out += '<span class="rb-missing">' + body + '</span>'; }
     buf = '';
@@ -268,23 +268,33 @@ function _rubyCa(s) {
   };
 
   let out = '';
+  let phraseStart = true;      // 구두점 뒤 첫 글자는 선을 새로 시작한다
+  let prevTone = 0;            // 앞 음절의 성조 (경성 높이 계산용)
   for (let i = 0; i < chars.length; i++) {
     const c = chars[i];
-    if (!_isHanziCh(c)) { out += c; continue; }
+    if (!_isHanziCh(c)) {
+      if (/[，。！？；：、,.!?]/.test(c)) phraseStart = true;
+      out += c; continue;
+    }
     const p = py[i];
     if (!p) {
       window.READING_MISSING.ca.add(c);
       out += '<span class="rb-missing">' + c + '</span>';
+      phraseStart = true;
       continue;
     }
     if (_showPronPoint) {
       const t = toneOf(p);
       const d = toneDisplay(c, p, nextToneAt(i));
+      const tc = d.contour || _neutralContour(prevTone);
+      prevTone = t;
       const cls = 'rb-ca tone-' + t + (d.changed ? ' tone-changed' : '') + (d.half4 ? ' tone-half4' : '');
-      out += '<ruby class="' + cls + '" title="' + d.name + '">'
-           + '<rt><span class="pp-tone">' + d.mark + '</span>' + p + '</rt>' + c + '</ruby>';
+      out += '<ruby class="' + cls + '" title="' + d.name + '" data-tc="' + tc.join(',') + '"'
+           + (phraseStart ? ' data-ps="1"' : '') + '>'
+           + c + '<rt>' + p + '</rt></ruby>';            // 루비는 반드시 '본문 → 주석' 순서
+      phraseStart = false;
     } else {
-      out += '<ruby class="rb-ca"><rt>' + p + '</rt>' + c + '</ruby>';
+      out += '<ruby class="rb-ca">' + c + '<rt>' + p + '</rt></ruby>';
     }
   }
   return out;
@@ -299,7 +309,13 @@ function _rubyCa(s) {
    =========================================================== */
 
 let _showPronPoint = false;
-function setPronPoint(on) { _showPronPoint = !!on; }
+function setPronPoint(on) {
+  _showPronPoint = !!on;
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.classList.toggle('pp-on', _showPronPoint);
+    schedulePitchDraw();
+  }
+}
 function getPronPoint() { return _showPronPoint; }
 
 // 성조 판별: 병음 음절에서 성조 부호를 찾아 1~4 반환 (없으면 0=경성)
@@ -326,9 +342,9 @@ function markJaPoints(kana, yomi) {
       out += '<span class="pp-long" title="장음 — 두 박으로 끌기">' + c + '</span>';
     } else if (c === 'ん' || c === 'ン') {
       out += '<span class="pp-n" title="撥音 — 한 박 유지">' + c + '</span>';
-    } else if ((c === 'う' || c === 'お') && 'おこそとのほもよろごどぼぽょ'.includes(kana[i - 1] || '')) {
+    } else if (i > 0 && (c === 'う' || c === 'お') && 'おこそとのほもよろごどぼぽょ'.includes(kana[i - 1])) {
       out += '<span class="pp-long" title="장음(おう) — 두 박으로 끌기">' + c + '</span>';
-    } else if (c === 'い' && 'えけせてねへめれげでべぺ'.includes(kana[i - 1] || '')) {
+    } else if (i > 0 && c === 'い' && 'えけせてねへめれげでべぺ'.includes(kana[i - 1])) {
       out += '<span class="pp-long" title="장음(えい) — 두 박으로 끌기">' + c + '</span>';
     } else {
       out += c;
@@ -355,7 +371,26 @@ const TONE_MARK_HALF3 = '↘';    // 반3성 — 내리기만
 const TONE_MARK_HALF4 = '↘\u0323'; // 반4성 — 짧게 내림
 
 // 표시용 성조 정보 계산. { mark, name, changed }
+// 성조 곡선 — 조치(趙元任) 5도 표기. 1=가장 낮음, 5=가장 높음.
+const TONE_CONTOUR = { 1: [5, 5], 2: [3, 5], 3: [2, 1, 4], 4: [5, 1] };
+// 경성은 앞 음절의 성조에 따라 높이가 정해진다 (1성 뒤 2, 2성 뒤 3, 3성 뒤 4, 4성 뒤 1)
+function _neutralContour(prevTone) {
+  return [{ 1: 2, 2: 3, 3: 4, 4: 1 }[prevTone] || 3];
+}
 function toneDisplay(ch, py, nextTone) {
+  const r = _toneDisplayBase(ch, py, nextTone);
+  // 실제로 발음되는 곡선
+  const t = toneOf(py);
+  if (r.contour) return r;
+  if (r.changed && r.mark === TONE_MARK[2]) r.contour = [3, 5];
+  else if (r.changed && r.mark === TONE_MARK[4]) r.contour = [5, 1];
+  else if (t === 3 && r.mark === TONE_MARK_HALF3) r.contour = [2, 1];   // ↘ 는 4성 기호와 같은 문자라 성조로 구분
+  else if (r.half4) r.contour = [5, 3];
+  else if (t === 0) r.contour = null;              // 경성 — 앞 음절 기준으로 계산
+  else r.contour = TONE_CONTOUR[t];
+  return r;
+}
+function _toneDisplayBase(ch, py, nextTone) {
   const t = toneOf(py);
 
   // ④ 一
@@ -372,7 +407,7 @@ function toneDisplay(ch, py, nextTone) {
     return { mark: TONE_MARK[2], name: '3성+3성 → 앞을 2성으로', changed: true };
   }
   // ② 3성 + 그 밖 → 반3성
-  if (t === 3 && nextTone > 0 && nextTone !== 3) {
+  if (t === 3 && nextTone >= 0 && nextTone !== 3) {        // 경성(0) 앞도 반3성
     return { mark: TONE_MARK_HALF3, name: '반3성 — 내리기만(올리지 않음)', changed: false };
   }
   // ③ 4성 + 4성 → 앞은 반4성
@@ -380,4 +415,190 @@ function toneDisplay(ch, py, nextTone) {
     return { mark: TONE_MARK[4], name: '4성+4성 — 앞은 짧고 덜 내림', changed: false, half4: true };
   }
   return { mark: TONE_MARK[t], name: TONE_NAME[t], changed: false };
+}
+
+
+/* ===========================================================
+   높낮이 선 그리기
+   - 중국어: 음절마다 성조 곡선(5도)을 이어 붙여 '한 줄의 선'으로 그린다.
+     구두점에서 끊고, 성조 변조(3+3, 一·不, 반3성 등)는 실제 발음 기준으로 그린다.
+   - 일본어: 문절마다 글자 위에 높음/낮음 두 단계의 선을 그린다.
+     악센트 데이터는 자동 분석 초안이라, JA_ACCENT_REVIEWED 가 true 가 되기 전까지는
+     관리자(window.JA_ACCENT_PREVIEW)에게만 보인다.
+   - 글자의 실제 화면 위치를 재서 그리므로 줄바꿈·글꼴 크기가 바뀌어도 맞는다.
+   =========================================================== */
+
+function _accentAllowed() {
+  return (typeof JA_ACCENT_REVIEWED !== 'undefined' && JA_ACCENT_REVIEWED) || window.JA_ACCENT_PREVIEW === true;
+}
+
+// 문절의 악센트 — 정확히 일치하는 문절이 없으면, 이 조각을 포함하는 문절에서 해당 부분을 잘라 쓴다.
+// (학습가이드가 기호를 문절 중간에 넣어 조각난 경우) 후보끼리 결과가 다르면 쓰지 않는다.
+const _ACC_CACHE = {};
+function lookupAccent(kana) {
+  if (typeof CAM_JA_ACCENT === 'undefined' || !kana) return null;
+  if (CAM_JA_ACCENT[kana]) return CAM_JA_ACCENT[kana];
+  if (kana in _ACC_CACHE) return _ACC_CACHE[kana];
+  let found = null, conflict = false;
+  if ([...kana].length >= 2) {
+    for (const k of Object.keys(CAM_JA_ACCENT)) {
+      const pos = k.indexOf(kana);
+      if (pos < 0) continue;
+      const part = CAM_JA_ACCENT[k].slice(pos, pos + kana.length);
+      if (found && found !== part) { conflict = true; break; }
+      found = part;
+    }
+  }
+  _ACC_CACHE[kana] = conflict ? null : found;
+  return _ACC_CACHE[kana];
+}
+
+// 발음 포인트 모드의 일본어 본문 — 장음·촉음·撥音 색 + 글자별 높낮이
+function _jaPronBody(kana) {
+  const pat = _accentAllowed() ? lookupAccent(kana) : null;
+  const chars = [...kana];
+  let out = '';
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i], prev = chars[i - 1] || '';
+    let cls = '', tip = '';
+    if (c === 'っ' || c === 'ッ') { cls = 'pp-soku'; tip = '촉음 — 한 박 멈춤'; }
+    else if (c === 'ー') { cls = 'pp-long'; tip = '장음 — 두 박으로 끌기'; }
+    else if (c === 'ん' || c === 'ン') { cls = 'pp-n'; tip = '撥音 — 한 박 유지'; }
+    // 주의: ''.includes('') 는 true 이므로 문절 첫 글자(앞 글자 없음)는 반드시 제외한다
+    else if (prev && (c === 'う' || c === 'お') && 'おこそとのほもよろごどぼぽょ'.includes(prev)) { cls = 'pp-long'; tip = '장음(おう) — 두 박으로 끌기'; }
+    else if (prev && c === 'う' && 'うくすつぬふむゆるぐずづぶぷゅ'.includes(prev)) { cls = 'pp-long'; tip = '장음(うう) — 두 박으로 끌기'; }
+    else if (prev && c === 'い' && 'えけせてねへめれげでべぺ'.includes(prev)) { cls = 'pp-long'; tip = '장음(えい) — 두 박으로 끌기'; }
+    const attrs = (pat ? ' data-p="' + pat[i] + '"' : '') + (tip ? ' title="' + tip + '"' : '');
+    if (cls || pat) out += '<span class="jm ' + cls + '"' + attrs + '>' + c + '</span>';
+    else out += c;
+  }
+  return out;
+}
+
+const _SVGNS = 'http://www.w3.org/2000/svg';
+let _pitchRaf = 0;
+function schedulePitchDraw() {
+  if (typeof requestAnimationFrame === 'undefined') return;
+  if (_pitchRaf) cancelAnimationFrame(_pitchRaf);
+  _pitchRaf = requestAnimationFrame(() => { _pitchRaf = 0; drawPitchLines(); });
+}
+
+function drawPitchLines() {
+  document.querySelectorAll('svg.pitch-overlay').forEach(e => e.remove());
+  if (!_showPronPoint) return;
+  const items = document.querySelectorAll('ruby[data-tc], span.jm[data-p]');
+  if (!items.length) return;
+
+  // 가장 가까운 블록 단위로 묶어 그 위에 한 장의 선 레이어를 얹는다
+  const groups = new Map();
+  items.forEach(el => {
+    if (!el.getClientRects().length) return;               // 화면에 없는 요소
+    const box = el.closest('p, td, li, .break-script-line, .sg-tech-line, .sg-emphasis-badge, .tc-text, #live-text, div');
+    if (!box) return;
+    if (!groups.has(box)) groups.set(box, []);
+    groups.get(box).push(el);
+  });
+
+  groups.forEach((els, box) => {
+    if (getComputedStyle(box).position === 'static') box.style.position = 'relative';
+    const br = box.getBoundingClientRect();
+    const svg = document.createElementNS(_SVGNS, 'svg');
+    svg.setAttribute('class', 'pitch-overlay');
+    svg.setAttribute('width', box.scrollWidth);
+    svg.setAttribute('height', box.scrollHeight);
+    // 각 선 = { pts: 점 목록, cls: 선 모양 }
+    //  ''        기본 높낮이 선
+    //  'pl-neu'  중국어 경성 — 점선 (약하고 짧게)
+    //  'pl-long' 일본어 장음 — 굵게 (두 박으로 끌기)
+    const segs = [], dots = [];
+    let cur = null, lastTop = null, lastRuby = null, lastPt = null;
+    let prevJa = null;        // 직전 일본어 박 { p, x1, yH, ruby }
+    const newSeg = (cls) => { cur = { pts: [], cls: cls || '' }; segs.push(cur); return cur; };
+
+    els.forEach(el => {
+      if (el.tagName === 'RUBY') {
+        // ── 중국어: 병음 위에 성조 곡선
+        const rt = el.querySelector('rt');
+        const r = (rt || el).getBoundingClientRect();
+        const top = r.top - br.top;
+        const brk = !cur || el.dataset.ps === '1' || Math.abs(top - lastTop) > 8;
+        lastTop = top;
+        const lv = el.dataset.tc.split(',').map(Number);
+        const x0 = r.left - br.left + r.width * 0.18, x1 = r.right - br.left - r.width * 0.18;
+        const base = top - 3, band = 18;                    // 5도 = 병음 위 18px 폭 (1도 = 4.5px)
+        const y = v => base - (v - 1) / 4 * band;
+        const pts = lv.length === 1 ? [[x0, y(lv[0])], [x1, y(lv[0])]]
+                  : lv.map((v, k) => [x0 + (x1 - x0) * k / (lv.length - 1), y(v)]);
+        if (el.classList.contains('tone-0')) {
+          // 경성은 앞 음절에서 이어지는 부분까지 점선으로, 다음 음절은 새 실선으로 시작
+          const sg = newSeg('pl-neu');
+          if (!brk && lastPt) sg.pts.push(lastPt);
+          sg.pts.push(...pts);
+          cur = null; lastPt = pts[pts.length - 1];
+          newSeg(''); cur.pts.push(lastPt);
+          return;
+        }
+        if (brk) { newSeg(''); lastPt = null; }
+        cur.pts.push(...pts);
+        lastPt = pts[pts.length - 1];
+      } else {
+        // ── 일본어: 글자 위 높음/낮음 두 단계
+        const ruby = el.closest('ruby, .rb-missing') || el.parentNode;
+        const r = el.getBoundingClientRect();
+        const top = r.top - br.top;
+        const brk = !cur || ruby !== lastRuby || Math.abs(top - lastTop) > 8;
+        if (brk) { newSeg(''); prevJa = null; }
+        lastRuby = ruby; lastTop = top;
+        const yH = top - 13, yL = top - 1;                  // 높음·낮음 간격 12px
+        const yy = el.dataset.p === 'H' ? yH : yL;
+        const x0 = r.left - br.left + 1, x1 = r.right - br.left - 1;
+        const ch = el.textContent;
+
+        // 악센트 핵 — 높았다가 떨어지는 바로 그 박(일본어에서 '강세'에 해당하는 자리)
+        if (prevJa && prevJa.p === 'H' && el.dataset.p === 'L') dots.push([prevJa.x1, prevJa.yH]);
+
+        if (ch === 'っ' || ch === 'ッ') {
+          // 촉음 — 한 박 멈춤: 선을 끊어 빈칸으로 둔다
+          newSeg('');
+        } else {
+          cur.pts.push([x0, yy], [x1, yy]);
+          if (el.classList.contains('pp-long') || ch === 'ー') {
+            // 장음 — 같은 높이로 두 박 끌기: 그 구간만 굵게 덧그린다
+            segs.push({ pts: [[x0, yy], [x1, yy]], cls: 'pl-long' });
+          }
+        }
+        prevJa = { p: el.dataset.p, x1, yH, ruby };
+      }
+    });
+
+    segs.forEach(sg => {
+      if (sg.pts.length < 2) return;
+      const pl = document.createElementNS(_SVGNS, 'polyline');
+      pl.setAttribute('points', sg.pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' '));
+      if (sg.cls) pl.setAttribute('class', sg.cls);
+      svg.appendChild(pl);
+    });
+    dots.forEach(([x, y]) => {
+      const c = document.createElementNS(_SVGNS, 'circle');
+      c.setAttribute('cx', x.toFixed(1)); c.setAttribute('cy', y.toFixed(1)); c.setAttribute('r', '3.6');
+      c.setAttribute('class', 'pl-nucleus');
+      svg.appendChild(c);
+    });
+    if (svg.childNodes.length) box.appendChild(svg);
+  });
+}
+
+// 화면이 바뀌거나 크기가 바뀌면 다시 그린다 (모든 화면에 자동 적용)
+if (typeof window !== 'undefined' && typeof MutationObserver !== 'undefined') {
+  const _start = () => {
+    new MutationObserver(muts => {
+      if (!_showPronPoint && !document.querySelector('svg.pitch-overlay')) return;
+      const onlyOverlay = muts.every(m =>
+        [...m.addedNodes, ...m.removedNodes].every(n => n.nodeType === 1 && n.classList && n.classList.contains('pitch-overlay')));
+      if (!onlyOverlay) schedulePitchDraw();
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+    window.addEventListener('resize', schedulePitchDraw);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedulePitchDraw);
+  };
+  if (document.body) _start(); else document.addEventListener('DOMContentLoaded', _start);
 }
