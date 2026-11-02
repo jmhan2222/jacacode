@@ -2608,7 +2608,17 @@ async function callGeminiGuide(scriptText, langCode) {
 - 단어 본래의 고저 패턴(頭高·中高·尾高·平板)을 지키는 방향으로만 안내할 것.
 - 문말 です·ます는 자연스럽게 내려서(↘) 마무리한다. 올리면 감점 요인이다.
 - 승객 주의 환기가 필요한 구간은 '억양을 올린다'가 아니라
-  '앞에 한 박 쉬고 또박또박, 조금 느리게' 처럼 pause·속도로 안내할 것.`,
+  '앞에 한 박 쉬고 또박또박, 조금 느리게' 처럼 pause·속도로 안내할 것.
+
+[일본어 고저 악센트 규칙 — 억양 안내는 반드시 이 규칙 안에서만]
+- 첫 박과 둘째 박은 높이가 다르다. 1형(頭高) 단어만 첫 박이 높고,
+  나머지 단어는 모두 '첫 박 낮게 → 둘째 박부터 높게' 시작한다.
+  예) みなさま: み(低) な(高) さ・ま(低) — 문두라고 처음부터 높이 올리라고 안내하면 틀린 지도다.
+- 한 덩어리(악센트구) 안에서 한 번 내려가면 다시 올라가지 않는다.
+- 문장은 뒤로 갈수록 전체 음높이가 조금씩 낮아진다(ダウンステップ). 문장 중간에서 다시 높이 치고 올라가지 말 것.
+- intonationDetails 의 ↘ 는 '단어의 악센트가 떨어지는 위치'를 뜻하게 쓰고,
+  ↗ 는 강조·주의 환기의 의미로 쓰지 말 것 (의문문이 아니면 문말 ↗ 금지).
+- 악센트가 확실하지 않은 단어는 단정하지 말고 '모델 음성을 따라 높낮이를 확인하세요'로 안내할 것.`,
     ca: `중국어 발음·성조 가이드 필수 포함 (비전공 학습자 대상):
 - 핵심 단어의 병음과 성조 번호 표기 예) '旅客 lǚkè (3성+4성)'
 - 3성+3성 연속 시 앞 글자 2성 변조 등 성조 변화 규칙 표시
@@ -2715,7 +2725,8 @@ ${langSpecific[langCode] || langSpecific.ko}
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: GEMINI_MODEL,
-      contents: [{ parts: [{ text: prompt }] }]
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json' }
     })
   }, { statusEl: $('study-guide-status') });
   if (res.status === 501) throw new Error('로컬 환경에서는 배포 후 사용 가능합니다.');
@@ -2795,6 +2806,43 @@ function _colorizeIntonText(text) {
     return m;
   });
   return _withReading(marked, state.selectedLang);
+}
+
+// ─── 끊어읽기 개수 상한 ─────────────────────────────────────────────────
+// 프롬프트로 '문장당 2개, 전체 6개'를 지시하지만 AI가 지키지 않는 경우가 있어
+// 화면에 그리기 전에 코드로 한 번 더 걸러낸다. 한박자(문장 전환)를 반박자보다 우선한다.
+// 저장된 원본은 바꾸지 않는다.
+const BREAK_MAX_PER_LINE = 2;
+const BREAK_MAX_TOTAL = 6;
+function _capBreakPoints(bps) {
+  if (!Array.isArray(bps)) return bps;
+  let total = 0;
+  const out = [];
+  for (const b of bps) {
+    if (!b || typeof b !== 'object' || !Array.isArray(b.marks)) { out.push(b); continue; }
+    const room = Math.max(0, Math.min(BREAK_MAX_PER_LINE, BREAK_MAX_TOTAL - total));
+    const order = b.marks.map((m, i) => ({ m, i }))
+      .sort((x, y) => ((x.m.type === 'full' ? 0 : 1) - (y.m.type === 'full' ? 0 : 1)) || (x.i - y.i));
+    const keep = new Set(order.slice(0, room).map(o => o.i));
+    total += keep.size;
+    if (keep.size === b.marks.length) { out.push(b); continue; }
+    // 본문 기호도 같이 지운다. 기호 수와 마크 수가 맞을 때만(맞지 않으면 본문은 그대로 둔다).
+    let text = String(b.text || '');
+    for (const [type, sym] of [['half', '∙'], ['full', '/']]) {
+      const idxs = b.marks.map((m, i) => ({ m, i })).filter(o => (o.m.type === 'full' ? 'full' : 'half') === type);
+      const count = text.split(sym).length - 1;
+      if (count !== idxs.length) continue;
+      let k = 0;
+      text = text.split(sym).reduce((acc, part, j) => {
+        if (j === 0) return part;
+        const keepIt = keep.has(idxs[k++].i);
+        return acc + (keepIt ? sym : '') + part;
+      }, '');
+    }
+    const marks = b.marks.filter((_, i) => keep.has(i));
+    if (marks.length) out.push({ ...b, text, marks });
+  }
+  return out;
 }
 
 // ─── 끊어읽기 항목 렌더 ───────────────────────────────────────────────────
@@ -2888,7 +2936,8 @@ function _renderStudyGuide(guide) {
     : '';
 
   // [2] 끊어읽기 — , | 색상 구분 + 범례
-  const breakPointsHtml = (guide.breakPoints?.length)
+  const _bps = _capBreakPoints(guide.breakPoints);
+  const breakPointsHtml = (_bps?.length)
     ? `<div class="sg-section" id="sg-sec-break">
         <div class="sg-section-header">
           <span class="sg-section-title">끊어읽기 포인트</span>${editBtn('break')}
@@ -2898,7 +2947,7 @@ function _renderStudyGuide(guide) {
           <span><span class="sg-bp-long">/</span> 한박자 — 충분히 쉬기 (0.7초)</span>
         </div>
         <div id="sg-body-break">
-          ${guide.breakPoints.map(b => `<div class="sg-break-item">${_renderBreakItem(b)}</div>`).join('')}
+          ${_bps.map(b => `<div class="sg-break-item">${_renderBreakItem(b)}</div>`).join('')}
         </div>
        </div>` : '';
 
@@ -3018,7 +3067,7 @@ function buildMasterScript(scriptText, guideData, langCode) {
   let text = _showReading ? _stripYomiLines(String(scriptText || ''), langCode) : String(scriptText || '');
 
   // 1단계: Firestore 데이터 HTML 태그 제거 후 기호 삽입 (순수 텍스트 유지)
-  (guideData.breakPoints || []).forEach(bp => {
+  (_capBreakPoints(guideData.breakPoints) || []).forEach(bp => {
     if (typeof bp !== 'object' || !bp.text) return;
     const marked = bp.text.replace(/<[^>]*>/g, '');
     const clean  = marked.replace(/[∙\/,|]/g, '').replace(/\s{2,}/g, ' ').trim();
@@ -4754,6 +4803,8 @@ async function callGeminiScoring(script, audioBlob, langCode, checkpoints) {
 억양 ${maxInton}점:
   ① 일본어다운 억양(10): 일본어 특성을 살린 자연스러운 억양인가
      - 감점: 미준수 / 높낮이 변화가 적어 평탄함 / 한국어식 억양 개입
+     - 감점: 주의를 끈다며 문두·단어 첫 박을 높게 올려 시작함 (예: みなさま 의 み를 높게)
+       → 일본어는 1형 단어가 아니면 첫 박이 낮고 둘째 박에서 올라간다
   ② 고른 억양(5): 상승·하향·동일 패턴이 반복되면 감점
   ③ 장음 연출(5): 장음 구간에 불필요한 억양을 얹지 않고 자연스럽게 끄는가
   ④ 어미·조사 처리(5): 짧게 끊음 / 길게 끎 / 불필요한 억양 사용 시 감점
@@ -5098,7 +5149,10 @@ ${sharedJson}`;
               { inline_data: { mime_type: audioBlob.type || 'audio/webm', data: base64Audio } },
               { text: audioPrompt }
             ]
-          }]
+          }],
+          // 응답을 JSON 으로 강제한다. 일본어·중국어 피드백 문장 안의 따옴표·괄호 때문에
+          // 자유 형식 응답이 JSON.parse 에서 깨지던 문제를 막는다.
+          generationConfig: { responseMimeType: 'application/json' }
         })
       });
     } finally {
@@ -5113,14 +5167,16 @@ ${sharedJson}`;
     console.log('Gemini audio 응답 앞 200자:', text.slice(0, 200));
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 120)}`);
     const data = JSON.parse(text);
-    const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (m) {
+    // 응답이 여러 part 로 나뉘어 올 수 있어 모두 이어 붙인다.
+    const raw = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+    const parsed = _parseAiJson(raw);
+    if (parsed) {
       await _incrementDailyUsage(_empId);
       updateAIUsageBadge();
       console.log('[채점] 오늘 채점 횟수:', _count + 1, '/ 5회');
-      return JSON.parse(m[0]);
+      return parsed;
     }
+    console.error('[채점] JSON 파싱 실패. 응답 앞부분:', raw.slice(0, 300));
     throw new Error('응답 JSON 파싱 실패');
   } catch (e) {
     if (e.name === 'AbortError') {
@@ -5163,6 +5219,23 @@ ${sharedJson}`;
   } finally {
     clearTimeout(_textTimeoutId);
   }
+}
+
+// AI 응답 JSON 파싱 — 코드펜스·앞뒤 설명·끝 쉼표가 섞여도 최대한 복구한다.
+function _parseAiJson(raw) {
+  if (!raw) return null;
+  const tries = [];
+  tries.push(raw);
+  tries.push(raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, ''));
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (m) {
+    tries.push(m[0]);
+    tries.push(m[0].replace(/,\s*([}\]])/g, '$1'));   // 끝 쉼표 제거
+  }
+  for (const t of tries) {
+    try { const o = JSON.parse(t); if (o && typeof o === 'object') return o; } catch {}
+  }
+  return null;
 }
 
 function renderAiResult(ai, isAdmin) {
